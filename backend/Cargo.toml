@@ -25,10 +25,15 @@ large_enum_variant = "allow"
 items_after_test_module = "allow"
 module_inception = "allow"
 
-# Panic prevention lints - enforce proper error handling
-unwrap_used = "allow"
-expect_used = "allow"
-panic = "allow"
+# Panic prevention lints - surface panic-prone patterns so they get proper
+# error handling (Result + `?`) instead of crashing in production.
+# These are restriction lints (not part of `clippy::all`); they only flag bare
+# `.unwrap()` / `.expect(...)` / `panic!(...)`. Safe combinators such as
+# `unwrap_or`, `unwrap_or_else`, and `unwrap_or_default` are not affected.
+# `unwrap`/`expect`/`panic` in tests are allowed via clippy.toml.
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
 
 [features]
 legacy_sep10_tests = []

@@ -1,0 +1,10 @@
+# Panic-prevention lints (`unwrap_used`, `expect_used`, `panic`) are enabled in
+# Cargo.toml to push production code toward proper error handling.
+#
+# Tests are exempt: `unwrap`/`expect`/`panic` are idiomatic there for asserting
+# invariants and keeping test code concise, and a failing test panic is the
+# intended outcome. These options scope the lints to non-test code so the signal
+# stays focused on production paths.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true

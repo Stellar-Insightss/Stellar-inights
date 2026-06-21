@@ -20,7 +20,16 @@ jobs:
     - name: Backend Clippy
       working-directory: ./backend
       run: cargo clippy --lib -- -W clippy::all
-    
+
+    # Surfaces panic-prone patterns (bare unwrap/expect/panic) in production code
+    # on every PR so they can be migrated to proper error handling. Tests are
+    # exempt via clippy.toml. Kept non-blocking while the legacy backlog is
+    # cleaned up incrementally; flip to a hard gate once production is clean.
+    - name: Backend panic-prevention lints
+      working-directory: ./backend
+      run: cargo clippy --lib -- -W clippy::unwrap_used -W clippy::expect_used -W clippy::panic
+      continue-on-error: true
+
     - name: Contracts Clippy
       working-directory: ./contracts
       run: cargo clippy --all-targets --all-features -- -W clippy::all
