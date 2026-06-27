@@ -8,6 +8,7 @@ use serde_json::json;
 use std::sync::Arc;
 
 use crate::auth::Claims;
+use crate::request_id::CorrelationContext;
 
 /// JWT secret shared via extension
 #[derive(Clone)]
@@ -60,11 +61,17 @@ pub async fn auth_middleware(
     // Validate token
     let claims = validate_access_token(token, jwt_secret.as_ref())?;
 
-    // Attach user to request extensions
     let auth_user = AuthUser {
-        user_id: claims.sub,
+        user_id: claims.sub.clone(),
         username: claims.username,
     };
+
+    // Enrich CorrelationContext with the authenticated user_id
+    if let Some(mut ctx) = req.extensions().get::<CorrelationContext>().cloned() {
+        ctx.user_id = Some(claims.sub);
+        req.extensions_mut().insert(ctx);
+    }
+
     req.extensions_mut().insert(auth_user);
 
     Ok(next.run(req).await)

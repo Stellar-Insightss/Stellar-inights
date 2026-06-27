@@ -304,15 +304,18 @@ pub async fn trace_propagation_middleware(req: Request<Body>, next: Next) -> Res
 
 /// Inject the current trace context into an outbound `reqwest::RequestBuilder`.
 ///
-/// Uses the globally registered propagator (W3C `TraceContext` by default) so
-/// that `traceparent` / `tracestate` headers are forwarded to downstream
-/// services, preserving the distributed trace across service boundaries.
+/// Forwards both W3C `traceparent`/`tracestate` and the application-level
+/// `X-Request-ID` header so that downstream services can correlate logs
+/// across the full request chain.
 ///
 /// # Example
 /// ```rust
-/// let response = inject_trace_context(client.get(&url)).send().await?;
+/// let response = inject_trace_context(client.get(&url), Some("req-id")).send().await?;
 /// ```
-pub fn inject_trace_context(builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+pub fn inject_trace_context(
+    builder: reqwest::RequestBuilder,
+    request_id: Option<&str>,
+) -> reqwest::RequestBuilder {
     let mut carrier = std::collections::HashMap::new();
     let cx = opentelemetry::Context::current();
     global::get_text_map_propagator(|propagator| {
@@ -323,6 +326,11 @@ pub fn inject_trace_context(builder: reqwest::RequestBuilder) -> reqwest::Reques
     for (key, value) in carrier {
         builder = builder.header(key, value);
     }
+
+    if let Some(id) = request_id {
+        builder = builder.header("X-Request-ID", id);
+    }
+
     builder
 }
 
@@ -354,13 +362,18 @@ mod tests {
 
     #[test]
     fn inject_trace_context_does_not_panic_without_active_span() {
-        // Verify inject_trace_context is safe to call even when no OTel span is active.
-        // Without a real OTLP exporter the carrier will simply be empty.
         global::set_text_map_propagator(TraceContextPropagator::new());
         let client = reqwest::Client::new();
         let builder = client.get("http://localhost");
-        // Should not panic
-        let _ = inject_trace_context(builder);
+        let _ = inject_trace_context(builder, None);
+    }
+
+    #[test]
+    fn inject_trace_context_forwards_request_id() {
+        global::set_text_map_propagator(TraceContextPropagator::new());
+        let client = reqwest::Client::new();
+        let builder = client.get("http://localhost");
+        let _ = inject_trace_context(builder, Some("test-request-id"));
     }
 
     #[tokio::test]

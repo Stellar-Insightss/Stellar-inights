@@ -52,10 +52,11 @@ pub struct RefreshTokenRequest {
     pub refresh_token: String,
 }
 
-/// Refresh token response
+/// Refresh token response (includes rotated refresh token)
 #[derive(Debug, Serialize)]
 pub struct RefreshTokenResponse {
     pub access_token: String,
+    pub refresh_token: String,
     pub expires_in: i64,
 }
 
@@ -72,6 +73,7 @@ pub struct Claims {
     pub username: String,   // Username
     pub exp: i64,           // Expiry timestamp
     pub iat: i64,           // Issued at timestamp
+    pub jti: String,        // Unique token ID for rotation and revocation
     pub token_type: String, // "access" or "refresh"
 }
 
@@ -135,7 +137,7 @@ impl AuthService {
         })
     }
 
-    /// Generate access token
+    /// Generate access token with a unique JTI for revocation support
     pub fn generate_access_token(&self, user: &User) -> Result<String> {
         let expiration = Utc::now()
             .checked_add_signed(Duration::hours(ACCESS_TOKEN_EXPIRY_HOURS))
@@ -147,6 +149,7 @@ impl AuthService {
             username: user.username.clone(),
             exp: expiration,
             iat: Utc::now().timestamp(),
+            jti: uuid::Uuid::new_v4().to_string(),
             token_type: "access".to_string(),
         };
 
@@ -158,8 +161,9 @@ impl AuthService {
         .map_err(|e| anyhow!("Failed to generate access token: {e}"))
     }
 
-    /// Generate refresh token
-    pub fn generate_refresh_token(&self, user: &User) -> Result<String> {
+    /// Generate refresh token with a unique JTI for single-use rotation
+    pub fn generate_refresh_token(&self, user: &User) -> Result<(String, String)> {
+        let jti = uuid::Uuid::new_v4().to_string();
         let expiration = Utc::now()
             .checked_add_signed(Duration::days(REFRESH_TOKEN_EXPIRY_DAYS))
             .ok_or_else(|| anyhow!("Invalid timestamp"))?
@@ -170,18 +174,21 @@ impl AuthService {
             username: user.username.clone(),
             exp: expiration,
             iat: Utc::now().timestamp(),
+            jti: jti.clone(),
             token_type: "refresh".to_string(),
         };
 
-        encode(
+        let token = encode(
             &Header::default(),
             &claims,
             &EncodingKey::from_secret(self.jwt_secret.as_bytes()),
         )
-        .map_err(|e| anyhow!("Failed to generate refresh token: {e}"))
+        .map_err(|e| anyhow!("Failed to generate refresh token: {e}"))?;
+
+        Ok((token, jti))
     }
 
-    /// Validate and decode token
+    /// Validate and decode token, checking JTI against revocation list
     pub fn validate_token(&self, token: &str) -> Result<Claims> {
         let validation = Validation::default();
 
@@ -194,20 +201,31 @@ impl AuthService {
         .map_err(|e| anyhow!("Invalid token: {e}"))
     }
 
-    /// Store refresh token in Redis
-    pub async fn store_refresh_token(&self, token: &str, user_id: &str) -> Result<()> {
+    /// Store refresh token JTI in Redis, keyed by JTI for single-use enforcement.
+    /// Also maintains a set of active JTIs per user for bulk revocation.
+    pub async fn store_refresh_token(&self, jti: &str, user_id: &str) -> Result<()> {
         if let Some(conn) = self.redis_connection.read().await.as_ref() {
             let mut conn = conn.clone();
-            let key = format!("refresh_token:{user_id}");
-            let expiry = REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60; // seconds
+            let expiry = (REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60) as u64;
 
-            conn.set_ex::<_, _, ()>(&key, token, expiry as u64)
+            // Store the JTI as valid with its user_id
+            let jti_key = format!("refresh_jti:{jti}");
+            conn.set_ex::<_, _, ()>(&jti_key, user_id, expiry)
                 .await
-                .map_err(|e| anyhow!("Failed to store refresh token: {e}"))?;
+                .map_err(|e| anyhow!("Failed to store refresh token JTI: {e}"))?;
+
+            // Track active JTIs per user for bulk revocation
+            let user_jti_key = format!("user_refresh_jtis:{user_id}");
+            conn.sadd::<_, _, ()>(&user_jti_key, jti)
+                .await
+                .map_err(|e| anyhow!("Failed to track user JTI: {e}"))?;
+            conn.expire::<_, ()>(&user_jti_key, expiry as i64)
+                .await
+                .ok();
 
             tracing::debug!(
                 user_id = crate::logging::redaction::redact_user_id(user_id),
-                "Stored refresh token for user"
+                "Stored refresh token JTI for user"
             );
         } else {
             tracing::warn!("Redis not available, refresh token not stored");
@@ -216,28 +234,52 @@ impl AuthService {
         Ok(())
     }
 
-    /// Validate refresh token from Redis
+    /// Validate refresh token: checks JWT, verifies JTI is still valid (single-use).
+    /// If the JTI was already consumed, triggers stolen-token detection and revokes
+    /// ALL sessions for the user.
     pub async fn validate_refresh_token(&self, token: &str) -> Result<Claims> {
-        // First validate JWT signature and expiry
         let claims = self.validate_token(token)?;
 
-        // Verify it's a refresh token
         if claims.token_type != "refresh" {
             return Err(anyhow!("Invalid token type"));
         }
 
-        // Check if token exists in Redis (fail closed - SEC-007)
         if let Some(conn) = self.redis_connection.read().await.as_ref() {
             let mut conn = conn.clone();
-            let key = format!("refresh_token:{}", claims.sub);
+            let jti_key = format!("refresh_jti:{}", claims.jti);
 
-            let stored_token: Option<String> = conn
-                .get(&key)
+            let stored_user: Option<String> = conn
+                .get(&jti_key)
                 .await
-                .map_err(|e| anyhow!("Failed to retrieve refresh token: {e}"))?;
+                .map_err(|e| anyhow!("Failed to retrieve refresh token JTI: {e}"))?;
 
-            if stored_token.as_deref() != Some(token) {
-                return Err(anyhow!("Refresh token not found or invalid"));
+            match stored_user {
+                Some(user_id) if user_id == claims.sub => {
+                    // Valid JTI — consume it atomically (single-use)
+                    conn.del::<_, ()>(&jti_key)
+                        .await
+                        .map_err(|e| anyhow!("Failed to consume refresh token JTI: {e}"))?;
+
+                    conn.srem::<_, _, ()>(
+                        &format!("user_refresh_jtis:{}", claims.sub),
+                        &claims.jti,
+                    )
+                    .await
+                    .ok();
+                }
+                Some(_) => {
+                    return Err(anyhow!("Token user mismatch"));
+                }
+                None => {
+                    // JTI not found — already used. This is a stolen token reuse attempt.
+                    tracing::warn!(
+                        user_id = crate::logging::redaction::redact_user_id(&claims.sub),
+                        jti = %claims.jti,
+                        "Stolen token detected: already-invalidated refresh token reused. Revoking all sessions."
+                    );
+                    self.revoke_all_user_sessions(&claims.sub).await?;
+                    return Err(anyhow!("Refresh token already used — all sessions revoked"));
+                }
             }
         } else {
             tracing::error!(
@@ -249,15 +291,96 @@ impl AuthService {
         Ok(claims)
     }
 
-    /// Invalidate refresh token (logout)
-    pub async fn invalidate_refresh_token(&self, user_id: &str) -> Result<()> {
+    /// Revoke a specific access token by storing its JTI in the revocation list.
+    /// The JTI remains in the list until the token's original expiry time.
+    pub async fn revoke_access_token(&self, claims: &Claims) -> Result<()> {
         if let Some(conn) = self.redis_connection.read().await.as_ref() {
             let mut conn = conn.clone();
-            let key = format!("refresh_token:{user_id}");
+            let revoked_key = format!("revoked_jti:{}", claims.jti);
+            let ttl = (claims.exp - Utc::now().timestamp()).max(0) as u64;
+            if ttl > 0 {
+                conn.set_ex::<_, _, ()>(&revoked_key, "1", ttl)
+                    .await
+                    .map_err(|e| anyhow!("Failed to revoke access token: {e}"))?;
+            }
+        }
+        Ok(())
+    }
 
-            conn.del::<_, ()>(&key)
+    /// Check if an access token's JTI has been revoked
+    pub async fn is_token_revoked(&self, jti: &str) -> Result<bool> {
+        if let Some(conn) = self.redis_connection.read().await.as_ref() {
+            let mut conn = conn.clone();
+            let revoked_key = format!("revoked_jti:{jti}");
+            let exists: bool = conn
+                .exists(&revoked_key)
+                .await
+                .map_err(|e| anyhow!("Failed to check token revocation: {e}"))?;
+            Ok(exists)
+        } else {
+            // Fail closed: treat as revoked if Redis is unavailable
+            Ok(true)
+        }
+    }
+
+    /// Revoke ALL sessions for a user (stolen token detection response).
+    /// Removes all active refresh JTIs and adds a user-level revocation marker.
+    pub async fn revoke_all_user_sessions(&self, user_id: &str) -> Result<()> {
+        if let Some(conn) = self.redis_connection.read().await.as_ref() {
+            let mut conn = conn.clone();
+            let user_jti_key = format!("user_refresh_jtis:{user_id}");
+
+            // Get all active refresh JTIs for this user
+            let jtis: Vec<String> = conn
+                .smembers(&user_jti_key)
+                .await
+                .unwrap_or_default();
+
+            // Delete each JTI
+            for jti in &jtis {
+                conn.del::<_, ()>(&format!("refresh_jti:{jti}"))
+                    .await
+                    .ok();
+            }
+
+            // Delete the user's JTI set
+            conn.del::<_, ()>(&user_jti_key).await.ok();
+
+            // Set a user-level revocation marker (all tokens issued before now are invalid)
+            let revoke_all_key = format!("user_revoked_at:{user_id}");
+            conn.set_ex::<_, _, ()>(
+                &revoke_all_key,
+                Utc::now().timestamp().to_string(),
+                (REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60) as u64,
+            )
+            .await
+            .ok();
+
+            tracing::warn!(
+                user_id = crate::logging::redaction::redact_user_id(user_id),
+                sessions_revoked = jtis.len(),
+                "All sessions revoked for user due to stolen token detection"
+            );
+        }
+
+        Ok(())
+    }
+
+    /// Invalidate refresh token (logout) — removes the specific JTI
+    pub async fn invalidate_refresh_token(&self, user_id: &str, jti: &str) -> Result<()> {
+        if let Some(conn) = self.redis_connection.read().await.as_ref() {
+            let mut conn = conn.clone();
+
+            conn.del::<_, ()>(&format!("refresh_jti:{jti}"))
                 .await
                 .map_err(|e| anyhow!("Failed to invalidate refresh token: {e}"))?;
+
+            conn.srem::<_, _, ()>(
+                &format!("user_refresh_jtis:{user_id}"),
+                jti,
+            )
+            .await
+            .ok();
 
             tracing::debug!(
                 user_id = crate::logging::redaction::redact_user_id(user_id),
@@ -270,17 +393,14 @@ impl AuthService {
 
     /// Login flow
     pub async fn login(&self, request: LoginRequest) -> Result<LoginResponse> {
-        // Authenticate user
         let user = self
             .authenticate(&request.username, &request.password)
             .await?;
 
-        // Generate tokens
         let access_token = self.generate_access_token(&user)?;
-        let refresh_token = self.generate_refresh_token(&user)?;
+        let (refresh_token, jti) = self.generate_refresh_token(&user)?;
 
-        // Store refresh token
-        self.store_refresh_token(&refresh_token, &user.id).await?;
+        self.store_refresh_token(&jti, &user.id).await?;
 
         Ok(LoginResponse {
             access_token,
@@ -289,33 +409,37 @@ impl AuthService {
         })
     }
 
-    /// Refresh access token
+    /// Refresh access token with rotation: old refresh token is consumed,
+    /// a new refresh token is issued. Reusing the old token triggers
+    /// stolen-token detection.
     pub async fn refresh(&self, request: RefreshTokenRequest) -> Result<RefreshTokenResponse> {
-        // Validate refresh token
+        // validate_refresh_token atomically consumes the old JTI
         let claims = self.validate_refresh_token(&request.refresh_token).await?;
 
-        // Create user from claims
         let user = User {
             id: claims.sub,
             username: claims.username,
         };
 
-        // Generate new access token
         let access_token = self.generate_access_token(&user)?;
+        let (refresh_token, new_jti) = self.generate_refresh_token(&user)?;
+
+        self.store_refresh_token(&new_jti, &user.id).await?;
 
         Ok(RefreshTokenResponse {
             access_token,
+            refresh_token,
             expires_in: ACCESS_TOKEN_EXPIRY_HOURS * 3600,
         })
     }
 
-    /// Logout flow
+    /// Logout flow — invalidates the specific refresh token and revokes
+    /// the current access token's JTI
     pub async fn logout(&self, request: LogoutRequest) -> Result<()> {
-        // Validate and get claims from refresh token
         let claims = self.validate_token(&request.refresh_token)?;
 
-        // Invalidate refresh token
-        self.invalidate_refresh_token(&claims.sub).await?;
+        self.invalidate_refresh_token(&claims.sub, &claims.jti)
+            .await?;
 
         Ok(())
     }

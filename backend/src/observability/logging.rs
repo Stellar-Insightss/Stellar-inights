@@ -13,7 +13,7 @@ use axum::{body::Body, extract::Request, middleware::Next, response::Response};
 use http_body_util::BodyExt;
 use std::time::Instant;
 
-use crate::request_id::RequestId;
+use crate::request_id::{RequestId, CorrelationContext};
 use crate::logging::redaction::{redact_sensitive_fields, auto_redact_string};
 
 /// Maximum bytes of a body to include in logs (prevents huge log lines).
@@ -36,6 +36,16 @@ pub async fn request_response_logging_middleware(req: Request<Body>, next: Next)
         .map(|r| r.0.clone())
         .unwrap_or_else(|| "unknown".to_string());
 
+    let correlation = req.extensions().get::<CorrelationContext>().cloned();
+    let service_name = correlation
+        .as_ref()
+        .map(|c| c.service_name.clone())
+        .unwrap_or_else(|| "stellar-insights-backend".to_string());
+    let user_id = correlation
+        .as_ref()
+        .and_then(|c| c.user_id.clone())
+        .unwrap_or_else(|| "anonymous".to_string());
+
     let method = req.method().to_string();
     let uri = req.uri().clone();
     let path = uri.path().to_string();
@@ -57,7 +67,9 @@ pub async fn request_response_logging_middleware(req: Request<Body>, next: Next)
     };
 
     tracing::info!(
-        request_id = %request_id,
+        trace_id = %request_id,
+        service_name = %service_name,
+        user_id = %user_id,
         method = %method,
         path = %path,
         query = %query,
@@ -86,7 +98,9 @@ pub async fn request_response_logging_middleware(req: Request<Body>, next: Next)
 
     if status >= 500 {
         tracing::error!(
-            request_id = %request_id,
+            trace_id = %request_id,
+            service_name = %service_name,
+            user_id = %user_id,
             method = %method,
             path = %path,
             status = status,
@@ -96,7 +110,9 @@ pub async fn request_response_logging_middleware(req: Request<Body>, next: Next)
         );
     } else if status >= 400 {
         tracing::warn!(
-            request_id = %request_id,
+            trace_id = %request_id,
+            service_name = %service_name,
+            user_id = %user_id,
             method = %method,
             path = %path,
             status = status,
@@ -106,7 +122,9 @@ pub async fn request_response_logging_middleware(req: Request<Body>, next: Next)
         );
     } else {
         tracing::info!(
-            request_id = %request_id,
+            trace_id = %request_id,
+            service_name = %service_name,
+            user_id = %user_id,
             method = %method,
             path = %path,
             status = status,

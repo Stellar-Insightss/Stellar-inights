@@ -38,15 +38,41 @@ impl fmt::Display for RequestId {
     }
 }
 
+/// Correlation context carried through the request lifecycle.
+/// Every log line emitted while this is in scope will include these fields.
+#[derive(Clone, Debug)]
+pub struct CorrelationContext {
+    pub trace_id: String,
+    pub service_name: String,
+    pub user_id: Option<String>,
+}
+
+impl CorrelationContext {
+    #[must_use]
+    pub fn new(trace_id: String, service_name: String) -> Self {
+        Self {
+            trace_id,
+            service_name,
+            user_id: None,
+        }
+    }
+
+    #[must_use]
+    pub fn with_user_id(mut self, user_id: String) -> Self {
+        self.user_id = Some(user_id);
+        self
+    }
+}
+
 /// Middleware to add request ID tracking
 ///
 /// This middleware:
 /// - Generates a unique request ID for each request
 /// - Adds it to request extensions for use in handlers
+/// - Builds a CorrelationContext with trace_id and service_name
 /// - Includes it in response headers as X-Request-ID
 /// - Logs the request ID for tracing
 pub async fn request_id_middleware(mut req: Request<Body>, next: Next) -> Response {
-    // Check if request already has an X-Request-ID header (from upstream)
     let request_id = if let Some(existing_id) = req.headers().get("X-Request-ID") {
         existing_id.to_str().ok().map_or_else(
             || Uuid::new_v4().to_string(),
@@ -56,23 +82,26 @@ pub async fn request_id_middleware(mut req: Request<Body>, next: Next) -> Respon
         Uuid::new_v4().to_string()
     };
 
-    // Store request ID in extensions for handlers to access
-    req.extensions_mut().insert(RequestId(request_id.clone()));
+    let service_name = std::env::var("SERVICE_NAME")
+        .unwrap_or_else(|_| "stellar-insights-backend".to_string());
 
-    // Log the request with ID
+    let correlation = CorrelationContext::new(request_id.clone(), service_name.clone());
+
+    req.extensions_mut().insert(RequestId(request_id.clone()));
+    req.extensions_mut().insert(correlation);
+
     let method = req.method().clone();
     let uri = req.uri().clone();
     tracing::info!(
-        request_id = %request_id,
+        trace_id = %request_id,
+        service_name = %service_name,
         method = %method,
         uri = %uri,
         "Incoming request"
     );
 
-    // Process the request
     let response = next.run(req).await;
 
-    // Add request ID to response headers
     let (mut parts, body) = response.into_parts();
 
     if let Ok(header_value) = HeaderValue::from_str(&request_id) {
@@ -87,6 +116,11 @@ pub async fn request_id_middleware(mut req: Request<Body>, next: Next) -> Respon
 /// Returns None if no request ID is found (shouldn't happen if middleware is applied)
 pub fn get_request_id(req: &Request<Body>) -> Option<String> {
     req.extensions().get::<RequestId>().map(|id| id.0.clone())
+}
+
+/// Extract correlation context from request extensions
+pub fn get_correlation_context(req: &Request<Body>) -> Option<CorrelationContext> {
+    req.extensions().get::<CorrelationContext>().cloned()
 }
 
 /// Error response with request ID

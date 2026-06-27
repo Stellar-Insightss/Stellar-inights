@@ -31,26 +31,50 @@ pub fn init_logging() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Log HTTP request with structured fields
+/// Log HTTP request with structured correlation fields
 #[macro_export]
 macro_rules! log_request {
     ($method:expr, $path:expr, $status:expr, $duration:expr, $request_id:expr) => {
         tracing::info!(
+            trace_id = %$request_id,
+            service_name = %std::env::var("SERVICE_NAME").unwrap_or_else(|_| "stellar-insights-backend".to_string()),
             http_method = %$method,
             http_path = %$path,
             http_status = $status,
             response_time_ms = $duration,
-            request_id = %$request_id,
+            "HTTP request completed"
+        );
+    };
+    ($method:expr, $path:expr, $status:expr, $duration:expr, $request_id:expr, $user_id:expr) => {
+        tracing::info!(
+            trace_id = %$request_id,
+            user_id = %$user_id,
+            service_name = %std::env::var("SERVICE_NAME").unwrap_or_else(|_| "stellar-insights-backend".to_string()),
+            http_method = %$method,
+            http_path = %$path,
+            http_status = $status,
+            response_time_ms = $duration,
             "HTTP request completed"
         );
     };
 }
 
-/// Log RPC call with structured fields
+/// Log RPC call with structured correlation fields
 #[macro_export]
 macro_rules! log_rpc_call {
     ($method:expr, $duration:expr, $success:expr) => {
         tracing::info!(
+            service_name = %std::env::var("SERVICE_NAME").unwrap_or_else(|_| "stellar-insights-backend".to_string()),
+            rpc_method = %$method,
+            response_time_ms = $duration,
+            success = $success,
+            "RPC call completed"
+        );
+    };
+    ($method:expr, $duration:expr, $success:expr, $trace_id:expr) => {
+        tracing::info!(
+            trace_id = %$trace_id,
+            service_name = %std::env::var("SERVICE_NAME").unwrap_or_else(|_| "stellar-insights-backend".to_string()),
             rpc_method = %$method,
             response_time_ms = $duration,
             success = $success,
@@ -64,6 +88,16 @@ macro_rules! log_rpc_call {
 macro_rules! log_query {
     ($query:expr, $duration:expr) => {
         tracing::debug!(
+            service_name = %std::env::var("SERVICE_NAME").unwrap_or_else(|_| "stellar-insights-backend".to_string()),
+            query = %$query,
+            query_time_ms = $duration,
+            "Database query executed"
+        );
+    };
+    ($query:expr, $duration:expr, $trace_id:expr) => {
+        tracing::debug!(
+            trace_id = %$trace_id,
+            service_name = %std::env::var("SERVICE_NAME").unwrap_or_else(|_| "stellar-insights-backend".to_string()),
             query = %$query,
             query_time_ms = $duration,
             "Database query executed"
@@ -71,11 +105,21 @@ macro_rules! log_query {
     };
 }
 
-/// Log error with context
+/// Log error with correlation context
 #[macro_export]
 macro_rules! log_error {
     ($err:expr, $context:expr) => {
         tracing::error!(
+            service_name = %std::env::var("SERVICE_NAME").unwrap_or_else(|_| "stellar-insights-backend".to_string()),
+            error = %$err,
+            context = $context,
+            "Error occurred"
+        );
+    };
+    ($err:expr, $context:expr, $trace_id:expr) => {
+        tracing::error!(
+            trace_id = %$trace_id,
+            service_name = %std::env::var("SERVICE_NAME").unwrap_or_else(|_| "stellar-insights-backend".to_string()),
             error = %$err,
             context = $context,
             "Error occurred"
