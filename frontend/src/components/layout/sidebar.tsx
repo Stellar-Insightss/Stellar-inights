@@ -23,6 +23,7 @@ import {
   Share2,
   Shield,
   Gauge,
+  Award,
 } from "lucide-react";
 import { useUserPreferences } from "@/contexts/UserPreferencesContext";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
@@ -35,6 +36,7 @@ const navItems = [
   { key: "analytics", icon: BarChart3, path: "/analytics" },
   { key: "apiUsage", icon: Activity, path: "/analytics/api" },
   { key: "trustlines", icon: Users, path: "/trustlines" },
+  { key: "rankings", icon: Award, path: "/rankings" },
   { key: "networkHealth", icon: Activity, path: "/health" },
   { key: "liquidity", icon: Waves, path: "/liquidity" },
   { key: "pools", icon: Droplets, path: "/liquidity-pools" },
