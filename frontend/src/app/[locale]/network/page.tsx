@@ -5,7 +5,9 @@ import dynamic from "next/dynamic";
 import { Activity, Share2, Info } from "lucide-react";
 import {
   fetchNetworkPaymentVolume,
+  fetchNetworkFeeTrends,
   type NetworkPaymentVolumePoint,
+  type NetworkFeeTrendPoint,
 } from "@/lib/network-api";
 import { logger } from "@/lib/logger";
 
@@ -34,6 +36,23 @@ const PaymentVolumeChart = dynamic(
   },
 );
 
+const FeeTrendsChart = dynamic(
+  () =>
+    import("@/components/charts/FeeTrendsChart").then((m) => ({
+      default: m.FeeTrendsChart,
+    })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="glass-card rounded-2xl p-6 border border-border/50 h-[420px] animate-pulse">
+        <div className="h-4 w-40 bg-white/5 rounded mb-4" />
+        <div className="h-8 w-64 bg-white/5 rounded mb-8" />
+        <div className="h-[260px] w-full bg-white/5 rounded-xl" />
+      </div>
+    ),
+  },
+);
+
 export default function NetworkPage() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -42,6 +61,10 @@ export default function NetworkPage() {
     [],
   );
   const [volumeLoading, setVolumeLoading] = useState(true);
+  const [feeTrendPoints, setFeeTrendPoints] = useState<NetworkFeeTrendPoint[]>(
+    [],
+  );
+  const [feeTrendsLoading, setFeeTrendsLoading] = useState(true);
 
   useEffect(() => {
     async function fetchGraphData() {
@@ -73,6 +96,22 @@ export default function NetworkPage() {
       }
     }
     void loadPaymentVolume();
+  }, []);
+
+  useEffect(() => {
+    async function loadFeeTrends() {
+      setFeeTrendsLoading(true);
+      try {
+        const result = await fetchNetworkFeeTrends(30);
+        setFeeTrendPoints(result.points);
+      } catch (err) {
+        logger.error("Failed to load fee trends panel:", err);
+        setFeeTrendPoints([]);
+      } finally {
+        setFeeTrendsLoading(false);
+      }
+    }
+    void loadFeeTrends();
   }, []);
 
   return (
@@ -118,7 +157,10 @@ export default function NetworkPage() {
       </div>
 
       {/* Network metrics panels */}
-      <PaymentVolumeChart data={volumePoints} loading={volumeLoading} />
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <FeeTrendsChart data={feeTrendPoints} loading={feeTrendsLoading} />
+        <PaymentVolumeChart data={volumePoints} loading={volumeLoading} />
+      </div>
 
       {/* Topology */}
       <div className="relative h-[calc(100vh-320px)] min-h-[500px]">
