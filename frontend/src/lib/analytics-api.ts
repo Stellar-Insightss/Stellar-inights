@@ -226,8 +226,6 @@ export interface WalletActivityResponse {
   activity: WalletActivityDay[];
 }
 
-export type TransferDirection = "in" | "out";
-
 export interface WalletTransfer {
   id: string;
   timestamp: string;
