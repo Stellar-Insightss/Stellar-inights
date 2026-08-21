@@ -82,6 +82,21 @@ export async function getCorridors(
   return api.get<CorridorMetrics[]>(url);
 }
 
+export interface CorridorInsightsResponse {
+  insights: string[];
+  generated_at?: string;
+}
+
+/**
+ * Auto-generated corridor insights (backend#12), e.g. "USDC/BRL success
+ * rate improved 4.2% this week", "3 corridors dropped below 95% uptime".
+ * Returns an empty list rather than throwing so the callout can render an
+ * empty/error state without breaking the rest of the /corridors page.
+ */
+export async function getCorridorInsights(): Promise<CorridorInsightsResponse> {
+  return api.get<CorridorInsightsResponse>("/corridors/insights");
+}
+
 /**
  * Mock data generator for development (fallback if API not available)
  */
