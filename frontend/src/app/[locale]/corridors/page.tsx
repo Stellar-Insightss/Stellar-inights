@@ -15,8 +15,13 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { SkeletonCorridorCard } from "@/components/ui/Skeleton";
 import { Link } from "@/i18n/navigation";
-import { getCorridors, CorridorMetrics } from "@/lib/api/corridors";
+import {
+  getCorridors,
+  getCorridorInsights,
+  CorridorMetrics,
+} from "@/lib/api/corridors";
 import { mockCorridors } from "@/components/lib//mockCorridorData";
+import { InsightsList } from "@/components/dashboard/InsightsList";
 import { DataTablePagination } from "@/components/ui/DataTablePagination";
 import { usePagination } from "@/hooks/usePagination";
 import { ExportDialog } from "@/components/ExportDialog";
@@ -50,6 +55,10 @@ function CorridorsPageContent() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [showFilters, setShowFilters] = useState(false);
+
+  const [insights, setInsights] = useState<string[]>([]);
+  const [insightsLoading, setInsightsLoading] = useState(true);
+  const [insightsError, setInsightsError] = useState<string | null>(null);
 
   const filteredCorridors = useMemo(() => {
     return corridors
@@ -107,6 +116,24 @@ function CorridorsPageContent() {
     fetchCorridors();
   }, [timePeriod, sortBy]);
 
+  useEffect(() => {
+    async function fetchInsights() {
+      setInsightsLoading(true);
+      setInsightsError(null);
+      try {
+        const result = await getCorridorInsights();
+        setInsights(result.insights ?? []);
+      } catch (err) {
+        logger.error("Error fetching corridor insights:", err);
+        setInsightsError("Unable to load corridor insights right now.");
+      } finally {
+        setInsightsLoading(false);
+      }
+    }
+
+    fetchInsights();
+  }, []);
+
   const paginatedCorridors = filteredCorridors.slice(startIndex, endIndex);
 
   return (
@@ -144,6 +171,21 @@ function CorridorsPageContent() {
         type="corridors"
         title="Payment Corridors"
       />
+
+      <section aria-labelledby="corridor-insights-heading" className="glass-card rounded-2xl p-6 border border-border/50">
+        <h2
+          id="corridor-insights-heading"
+          className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-4"
+        >
+          Insights
+        </h2>
+        <InsightsList
+          insights={insights}
+          isLoading={insightsLoading}
+          error={insightsError}
+          emptyMessage="No corridor insights available yet."
+        />
+      </section>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         <div className="lg:col-span-8 relative group">

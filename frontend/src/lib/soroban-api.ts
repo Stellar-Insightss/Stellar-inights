@@ -68,6 +68,8 @@ export interface SorobanGasUsageResponse {
   trend?: number;
   /** Set to true when backend#23 hasn't landed yet. */
   coming_soon?: boolean;
+}
+
 export interface SorobanActiveContractsResponse {
   /** Total count of active contracts. */
   count: number;
@@ -228,7 +230,24 @@ export async function fetchSorobanGasUsage(
     const isNotImplemented =
       error instanceof Error &&
       (error.message.includes("404") || error.message.includes("501"));
+    const isNetworkError =
+      error instanceof TypeError &&
+      (error.message.includes("Failed to fetch") ||
+        error.message.includes("Network request failed"));
 
+    if (!isNetworkError && !isNotImplemented) {
+      logger.error("Failed to fetch Soroban gas usage:", error);
+    }
+
+    return {
+      total_gas: 0,
+      window,
+      coming_soon: true,
+    };
+  }
+}
+
+/**
  * Active contracts count (backend#21).
  * Returns zero count when backend is unavailable.
  */
@@ -249,15 +268,6 @@ export async function fetchSorobanActiveContracts(
       (error.message.includes("Failed to fetch") ||
         error.message.includes("Network request failed"));
 
-    if (!isNetworkError && !isNotImplemented) {
-      logger.error("Failed to fetch Soroban gas usage:", error);
-    }
-
-    return {
-      total_gas: 0,
-      window,
-      coming_soon: true,
-    };
     if (!isNetworkError) {
       logger.error("Failed to fetch Soroban active contracts:", error);
     }

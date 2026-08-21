@@ -12,14 +12,11 @@ import {
   fetchSorobanNewDeployments,
   fetchSorobanTopContracts,
   fetchSorobanGasUsage,
-  type SorobanContractCallsResponse,
-  type SorobanNewDeploymentsResponse,
-  type SorobanTopContractsResponse,
-  type SorobanGasUsageResponse,
   fetchSorobanActiveContracts,
   type SorobanContractCallsResponse,
   type SorobanNewDeploymentsResponse,
   type SorobanTopContractsResponse,
+  type SorobanGasUsageResponse,
   type SorobanActiveContractsResponse,
 } from "@/lib/soroban-api";
 import { logger } from "@/lib/logger";
@@ -60,8 +57,7 @@ export default function SorobanPage() {
     else setLoading(true);
 
     try {
-      const [contractsData, deploymentsData, callsData, gasData] =
-      const [contractsData, deploymentsData, callsData, activeData] =
+      const [contractsData, deploymentsData, callsData, gasData, activeData] =
         await Promise.all([
           fetchSorobanTopContracts(20, "7d"),
           fetchSorobanNewDeployments(20),
@@ -94,10 +90,12 @@ export default function SorobanPage() {
 
   useEffect(() => {
     void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+      {/* Page Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-border/50 pb-6">
         <div>
           <div className="text-[10px] font-mono text-accent uppercase tracking-[0.2em] mb-2">
@@ -108,8 +106,8 @@ export default function SorobanPage() {
             Soroban Activity
           </h1>
           <p className="text-muted-foreground text-sm max-w-xl mt-3">
-            Contract-call volume, top contracts, and recent deployments across the
-            Soroban network.
+            Contract-call volume, top contracts, and recent deployments across
+            the Soroban network.
           </p>
         </div>
         <button
@@ -126,20 +124,13 @@ export default function SorobanPage() {
         </button>
       </div>
 
+      {/* Panel 1: Contract Calls Chart */}
       <ContractCallsChart
         data={contractCalls?.points ?? []}
         loading={loading}
       />
 
-      {/* Gas Usage Stat Panel */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <GasUsagePanel
-          totalGas={gasUsage?.total_gas ?? 0}
-          avgGas={gasUsage?.avg_gas}
-          window={gasUsage?.window}
-          trend={gasUsage?.trend}
-          comingSoon={gasUsage?.coming_soon}
-      {/* Active Contracts Stat Panel */}
+      {/* Panel 2 & 3: Active Contracts + Gas Usage stat cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <ActiveContractsPanel
           count={activeContracts?.count ?? 0}
@@ -147,8 +138,17 @@ export default function SorobanPage() {
           trend={activeContracts?.trend}
           loading={loading}
         />
+        <GasUsagePanel
+          totalGas={gasUsage?.total_gas ?? 0}
+          avgGas={gasUsage?.avg_gas}
+          window={gasUsage?.window}
+          trend={gasUsage?.trend}
+          comingSoon={gasUsage?.coming_soon}
+          loading={loading}
+        />
       </div>
 
+      {/* Panel 4: Top Contracts table + New Deployments list */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <TopContractsTable
           contracts={topContracts?.contracts ?? []}

@@ -28,6 +28,27 @@ export async function getProposal(id: string): Promise<Proposal> {
   return api.get<Proposal>(`/governance/proposals/${id}`);
 }
 
+export interface GovernanceInsightsResponse {
+  insights: string[];
+  /**
+   * ISO timestamp of when these insights were generated. Governance data
+   * (backend#14) may currently be sourced via storage polling rather than
+   * contract events until the governance/governance-voting contracts add
+   * them (contracts#10/#12), so this can lag noticeably behind other
+   * insight callouts — surface it in the UI rather than hiding the lag.
+   */
+  generated_at?: string;
+}
+
+/**
+ * Auto-generated governance insights: proposal momentum, voter turnout, etc.
+ * Returns an empty list rather than throwing so the callout degrades
+ * gracefully if the endpoint isn't available yet.
+ */
+export async function getGovernanceInsights(): Promise<GovernanceInsightsResponse> {
+  return api.get<GovernanceInsightsResponse>("/governance/insights");
+}
+
 export async function createProposal(
   request: CreateProposalRequest,
   authToken: string,

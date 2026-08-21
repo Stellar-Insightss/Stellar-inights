@@ -18,13 +18,34 @@ interface TopAssetsTableProps {
     assets: Asset[];
 }
 
-const handleShare = (asset: Asset) => {
+function buildShareText(asset: Asset): string {
     const changeText = typeof asset.change24h === 'number'
-        ? `${asset.change24h > 0 ? '+' : ''}${asset.change24h}%`
-        : 'N/A';
-    const shareText = `Check out ${asset.symbol} (${asset.name}) on Stellar Insights! Price: $${asset.price < 1 ? asset.price.toFixed(4) : asset.price.toLocaleString(undefined, { minimumFractionDigits: 2})}, 24h Change: ${changeText}`;
-    const shareUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}`;
-    window.open(shareUrl, '_blank');
+        ? `is ${asset.change24h >= 0 ? 'up' : 'down'} ${Math.abs(asset.change24h)}%`
+        : "hasn't moved much";
+    return `${asset.symbol} ${changeText} on Stellar today. Price: $${asset.price < 1 ? asset.price.toFixed(4) : asset.price.toLocaleString(undefined, { minimumFractionDigits: 2 })} — via Stellar Insights`;
+}
+
+const handleShare = async (asset: Asset) => {
+    const shareText = buildShareText(asset);
+    const shareUrl = typeof window !== 'undefined' ? window.location.href : undefined;
+
+    // Prefer the native Web Share API where available (mobile browsers, some
+    // desktop browsers) so the user gets their OS share sheet rather than
+    // being forced straight to X/Twitter.
+    if (typeof navigator !== 'undefined' && navigator.share) {
+        try {
+            await navigator.share({ text: shareText, url: shareUrl });
+            return;
+        } catch (err) {
+            // AbortError means the user cancelled the native share sheet —
+            // don't fall back to the X intent link in that case.
+            if (err instanceof Error && err.name === 'AbortError') return;
+        }
+    }
+
+    // Fallback: open an X/Twitter intent link with pre-filled text.
+    const intentUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}${shareUrl ? `&url=${encodeURIComponent(shareUrl)}` : ''}`;
+    window.open(intentUrl, '_blank', 'noopener,noreferrer');
 };
 
 export const TopAssetsTable: React.FC<TopAssetsTableProps> = ({ assets }) => {

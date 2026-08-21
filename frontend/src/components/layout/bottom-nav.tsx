@@ -3,7 +3,7 @@
 import React from "react";
 import { Link } from "@/i18n/navigation";
 import { usePathname } from "@/i18n/navigation";
-import { Home, TrendingUp, Anchor, BarChart3 } from "lucide-react";
+import { LayoutDashboard, Users, Wallet, Code2, Medal } from "lucide-react";
 
 interface NavItem {
   name: string;
@@ -12,30 +12,41 @@ interface NavItem {
   id: string;
 }
 
+// Mirrors the sidebar's grouped IA (see layout/sidebar.tsx). Bottom-nav space
+// only fits a handful of tabs, so this surfaces one representative route per
+// top-priority group — Overview, Assets, Wallets, Soroban, Rankings — and
+// drops Validators/Explorer, matching the same groups sidebar.tsx demotes
+// into its lower-priority "explorer" section.
 const navItems: NavItem[] = [
   {
-    name: "Dashboard",
+    name: "Overview",
     href: "/dashboard",
-    icon: <Home className="w-5 h-5" />,
-    id: "dashboard",
+    icon: <LayoutDashboard className="w-5 h-5" />,
+    id: "overview",
   },
   {
-    name: "Corridors",
-    href: "/corridors",
-    icon: <TrendingUp className="w-5 h-5" />,
-    id: "corridors",
+    name: "Assets",
+    href: "/trustlines",
+    icon: <Users className="w-5 h-5" />,
+    id: "assets",
   },
   {
-    name: "Anchors",
-    href: "/anchors",
-    icon: <Anchor className="w-5 h-5" />,
-    id: "anchors",
+    name: "Wallets",
+    href: "/wallet",
+    icon: <Wallet className="w-5 h-5" />,
+    id: "wallets",
   },
   {
-    name: "Analytics",
-    href: "/analytics",
-    icon: <BarChart3 className="w-5 h-5" />,
-    id: "analytics",
+    name: "Soroban",
+    href: "/soroban",
+    icon: <Code2 className="w-5 h-5" />,
+    id: "soroban",
+  },
+  {
+    name: "Rankings",
+    href: "/rankings",
+    icon: <Medal className="w-5 h-5" />,
+    id: "rankings",
   },
 ];
 

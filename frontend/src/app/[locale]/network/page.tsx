@@ -6,8 +6,14 @@ import { Activity, Share2, Info } from "lucide-react";
 import {
   fetchNetworkPaymentVolume,
   fetchNetworkDailyActiveAccounts,
+  fetchNetworkTransactionsPerDay,
+  fetchNetworkNewAccounts,
+  fetchNetworkFeeTrends,
   type NetworkPaymentVolumePoint,
   type NetworkDailyActiveAccountsPoint,
+  type NetworkTransactionsPerDayPoint,
+  type NetworkNewAccountsPoint,
+  type NetworkFeeTrendPoint,
 } from "@/lib/network-api";
 import { logger } from "@/lib/logger";
 
@@ -53,6 +59,57 @@ const DailyActiveAccountsChart = dynamic(
   },
 );
 
+const TransactionsPerDayChart = dynamic(
+  () =>
+    import("@/components/charts/TransactionsPerDayChart").then((m) => ({
+      default: m.TransactionsPerDayChart,
+    })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="glass-card rounded-2xl p-6 border border-border/50 h-[420px] animate-pulse">
+        <div className="h-4 w-40 bg-white/5 rounded mb-4" />
+        <div className="h-8 w-64 bg-white/5 rounded mb-8" />
+        <div className="h-[260px] w-full bg-white/5 rounded-xl" />
+      </div>
+    ),
+  },
+);
+
+const NewAccountsChart = dynamic(
+  () =>
+    import("@/components/charts/NewAccountsChart").then((m) => ({
+      default: m.NewAccountsChart,
+    })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="glass-card rounded-2xl p-6 border border-border/50 h-[420px] animate-pulse">
+        <div className="h-4 w-40 bg-white/5 rounded mb-4" />
+        <div className="h-8 w-64 bg-white/5 rounded mb-8" />
+        <div className="h-[260px] w-full bg-white/5 rounded-xl" />
+      </div>
+    ),
+  },
+);
+
+const FeeTrendsChart = dynamic(
+  () =>
+    import("@/components/charts/FeeTrendsChart").then((m) => ({
+      default: m.FeeTrendsChart,
+    })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="glass-card rounded-2xl p-6 border border-border/50 h-[420px] animate-pulse">
+        <div className="h-4 w-40 bg-white/5 rounded mb-4" />
+        <div className="h-8 w-64 bg-white/5 rounded mb-8" />
+        <div className="h-[260px] w-full bg-white/5 rounded-xl" />
+      </div>
+    ),
+  },
+);
+
 export default function NetworkPage() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -65,6 +122,18 @@ export default function NetworkPage() {
     [],
   );
   const [daaLoading, setDaaLoading] = useState(true);
+  const [txPerDayPoints, setTxPerDayPoints] = useState<
+    NetworkTransactionsPerDayPoint[]
+  >([]);
+  const [txPerDayLoading, setTxPerDayLoading] = useState(true);
+  const [newAccountsPoints, setNewAccountsPoints] = useState<
+    NetworkNewAccountsPoint[]
+  >([]);
+  const [newAccountsLoading, setNewAccountsLoading] = useState(true);
+  const [feeTrendPoints, setFeeTrendPoints] = useState<NetworkFeeTrendPoint[]>(
+    [],
+  );
+  const [feeTrendsLoading, setFeeTrendsLoading] = useState(true);
 
   useEffect(() => {
     async function fetchGraphData() {
@@ -114,6 +183,54 @@ export default function NetworkPage() {
     void loadDailyActiveAccounts();
   }, []);
 
+  useEffect(() => {
+    async function loadTransactionsPerDay() {
+      setTxPerDayLoading(true);
+      try {
+        const result = await fetchNetworkTransactionsPerDay(30);
+        setTxPerDayPoints(result.points);
+      } catch (err) {
+        logger.error("Failed to load transactions-per-day panel:", err);
+        setTxPerDayPoints([]);
+      } finally {
+        setTxPerDayLoading(false);
+      }
+    }
+    void loadTransactionsPerDay();
+  }, []);
+
+  useEffect(() => {
+    async function loadNewAccounts() {
+      setNewAccountsLoading(true);
+      try {
+        const result = await fetchNetworkNewAccounts(30);
+        setNewAccountsPoints(result.points);
+      } catch (err) {
+        logger.error("Failed to load new accounts panel:", err);
+        setNewAccountsPoints([]);
+      } finally {
+        setNewAccountsLoading(false);
+      }
+    }
+    void loadNewAccounts();
+  }, []);
+
+  useEffect(() => {
+    async function loadFeeTrends() {
+      setFeeTrendsLoading(true);
+      try {
+        const result = await fetchNetworkFeeTrends(30);
+        setFeeTrendPoints(result.points);
+      } catch (err) {
+        logger.error("Failed to load fee trends panel:", err);
+        setFeeTrendPoints([]);
+      } finally {
+        setFeeTrendsLoading(false);
+      }
+    }
+    void loadFeeTrends();
+  }, []);
+
   return (
     <div className="min-h-screen p-8 lg:p-12 space-y-10">
       {/* Header Area */}
@@ -159,6 +276,15 @@ export default function NetworkPage() {
       {/* Network metrics panels */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <DailyActiveAccountsChart data={daaPoints} loading={daaLoading} />
+        <TransactionsPerDayChart
+          data={txPerDayPoints}
+          loading={txPerDayLoading}
+        />
+        <NewAccountsChart
+          data={newAccountsPoints}
+          loading={newAccountsLoading}
+        />
+        <FeeTrendsChart data={feeTrendPoints} loading={feeTrendsLoading} />
         <PaymentVolumeChart data={volumePoints} loading={volumeLoading} />
       </div>
 

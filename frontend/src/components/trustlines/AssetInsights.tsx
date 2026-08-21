@@ -1,4 +1,5 @@
 import { Lightbulb } from "lucide-react";
+import { InsightsList } from "@/components/dashboard/InsightsList";
 import { AssetInsights as AssetInsightsType } from "@/lib/trustline-api";
 
 function fmt(n: number) {
@@ -54,6 +55,8 @@ interface Props {
 }
 
 export function AssetInsights({ data, loading }: Props) {
+  const insights = data ? buildSentences(data) : [];
+
   return (
     <div className="glass-card rounded-2xl p-6 border border-border/50">
       <div className="flex items-center gap-2 mb-4">
@@ -61,26 +64,11 @@ export function AssetInsights({ data, loading }: Props) {
         <h3 className="text-sm font-bold uppercase tracking-wider">Asset Insights</h3>
       </div>
 
-      {loading ? (
-        <div className="space-y-2">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-4 bg-white/5 rounded animate-pulse" style={{ width: `${70 + i * 8}%` }} />
-          ))}
-        </div>
-      ) : !data || buildSentences(data).length === 0 ? (
-        <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider">
-          Insufficient data to generate insights for this asset.
-        </p>
-      ) : (
-        <ul className="space-y-2">
-          {buildSentences(data).map((s, i) => (
-            <li key={i} className="text-sm text-muted-foreground leading-relaxed flex gap-2">
-              <span className="text-accent mt-1 shrink-0">›</span>
-              <span>{s}</span>
-            </li>
-          ))}
-        </ul>
-      )}
+      <InsightsList
+        insights={insights}
+        isLoading={loading}
+        emptyMessage="Insufficient data to generate insights for this asset."
+      />
     </div>
   );
 }

@@ -6,9 +6,11 @@ import { ScrollText, Plus } from "lucide-react";
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { ProposalCard } from "@/components/governance/ProposalCard";
 import { useWallet } from "@/components/lib/wallet-context";
-import { getProposals } from "@/lib/governance-api";
+import { getProposals, getGovernanceInsights } from "@/lib/governance-api";
 import type { Proposal, ProposalStatus } from "@/types/governance";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { InsightsList } from "@/components/dashboard/InsightsList";
+import { logger } from "@/lib/logger";
 
 // Lazy-load the modal — it's only needed when the user clicks "Create Proposal".
 const CreateProposalModal = dynamic(
@@ -32,6 +34,10 @@ export default function GovernancePage() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ProposalStatus | "all">("all");
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [insights, setInsights] = useState<string[]>([]);
+  const [insightsGeneratedAt, setInsightsGeneratedAt] = useState<string | null>(null);
+  const [insightsLoading, setInsightsLoading] = useState(true);
+  const [insightsError, setInsightsError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -52,6 +58,32 @@ export default function GovernancePage() {
     setLoading(true);
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchInsights() {
+      setInsightsLoading(true);
+      setInsightsError(null);
+      try {
+        const result = await getGovernanceInsights();
+        if (!cancelled) {
+          setInsights(result.insights ?? []);
+          setInsightsGeneratedAt(result.generated_at ?? null);
+        }
+      } catch (err) {
+        logger.error("Error fetching governance insights:", err);
+        if (!cancelled) {
+          setInsightsError("Unable to load governance insights right now.");
+        }
+      } finally {
+        if (!cancelled) setInsightsLoading(false);
+      }
+    }
+    fetchInsights();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const activeCount = proposals.filter((p) => p.status === "active").length;
   const passedCount = proposals.filter((p) => p.status === "passed").length;
@@ -127,6 +159,34 @@ export default function GovernancePage() {
             subLabel="Rejected proposals"
           />
         </div>
+
+        <section
+          aria-labelledby="governance-insights-heading"
+          className="glass-card rounded-2xl p-6 border border-border/50"
+        >
+          <div className="flex items-center justify-between gap-4 mb-4">
+            <h2
+              id="governance-insights-heading"
+              className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground"
+            >
+              Insights // Proposal Momentum &amp; Voter Turnout
+            </h2>
+            {!insightsLoading && !insightsError && insightsGeneratedAt && (
+              <span
+                className="text-[10px] font-mono text-muted-foreground/70 uppercase tracking-wider"
+                title="Governance insights are currently sourced via storage polling and may lag behind other insight callouts."
+              >
+                Data as of {new Date(insightsGeneratedAt).toLocaleString()}
+              </span>
+            )}
+          </div>
+          <InsightsList
+            insights={insights}
+            isLoading={insightsLoading}
+            error={insightsError}
+            emptyMessage="No governance insights available yet."
+          />
+        </section>
 
         <div className="flex items-center gap-2 overflow-x-auto pb-2">
           {STATUS_TABS.map((tab) => (
