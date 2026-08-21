@@ -1,6 +1,7 @@
 /**
  * Network dashboard API client.
  * Backed by Stellar-Insightss/backend#15–#19:
+ *   GET /api/v1/network/fee-trends      → {date, avg_fee} (backend#19)
  *   GET /api/v1/network/payment-volume  → {date, volume} (backend#17)
  *
  * Volume unit matches NetworkStats.volume_24h (USD-equivalent) —
@@ -20,6 +21,16 @@ export interface NetworkPaymentVolumePoint {
 export interface NetworkPaymentVolumeResponse {
   points: NetworkPaymentVolumePoint[];
   unit: "usd";
+}
+
+export interface NetworkFeeTrendPoint {
+  date: string;
+  /** Average transaction fee for the day, in stroops. */
+  avgFeeStroops: number;
+}
+
+export interface NetworkFeeTrendsResponse {
+  points: NetworkFeeTrendPoint[];
 }
 
 async function fetchJson<T>(url: string): Promise<T> {
@@ -87,5 +98,62 @@ export async function fetchNetworkPaymentVolume(
       logger.error("Failed to fetch network payment volume:", error);
     }
     return { points: [], unit: "usd" };
+  }
+}
+
+function normalizeFeeTrendPoints(raw: unknown): NetworkFeeTrendPoint[] {
+  const rows = Array.isArray(raw)
+    ? raw
+    : Array.isArray((raw as { points?: unknown })?.points)
+      ? (raw as { points: unknown[] }).points
+      : Array.isArray((raw as { series?: unknown })?.series)
+        ? (raw as { series: unknown[] }).series
+        : Array.isArray((raw as { data?: unknown })?.data)
+          ? (raw as { data: unknown[] }).data
+          : [];
+
+  return rows
+    .map((row) => {
+      const item = row as {
+        date?: string;
+        day?: string;
+        timestamp?: string;
+        avg_fee?: number;
+        avg_fee_stroops?: number;
+        average_fee?: number;
+      };
+      const date = item.date ?? item.day ?? item.timestamp;
+      const avgFeeStroops =
+        item.avg_fee_stroops ?? item.avg_fee ?? item.average_fee;
+      if (!date || typeof avgFeeStroops !== "number" || Number.isNaN(avgFeeStroops))
+        return null;
+      return { date, avgFeeStroops };
+    })
+    .filter((point): point is NetworkFeeTrendPoint => point != null)
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+}
+
+/**
+ * Daily average-fee time series (backend#19) — completes the Network
+ * Dashboard panel set (DAA, tx/day, volume, new accounts, fee trends).
+ * Returns an empty series when the backend is unavailable so the panel
+ * can show an empty state without failing the whole /network page.
+ */
+export async function fetchNetworkFeeTrends(
+  days = 30,
+): Promise<NetworkFeeTrendsResponse> {
+  const url = `${API_BASE}/api/v1/network/fee-trends?days=${days}`;
+  try {
+    const data = await fetchJson<unknown>(url);
+    return { points: normalizeFeeTrendPoints(data) };
+  } catch (error) {
+    const isNetworkError =
+      error instanceof TypeError &&
+      (error.message.includes("Failed to fetch") ||
+        error.message.includes("Network request failed"));
+    if (!isNetworkError) {
+      logger.error("Failed to fetch network fee trends:", error);
+    }
+    return { points: [] };
   }
 }
