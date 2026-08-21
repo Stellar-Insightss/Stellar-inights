@@ -1,4 +1,5 @@
 "use client";
+import { useEffect, useState } from "react";
 import {
   Search,
   Home as AnchorIcon,
@@ -15,6 +16,9 @@ import { SkeletonTable } from "@/components/ui/Skeleton";
 import useAnchorPage from "./useAnchorPage";
 import AnchorList from "./AnchorTable";
 import AnchorCards from "./AnchorCards";
+import { InsightsList } from "@/components/dashboard/InsightsList";
+import { getAnchorInsights } from "@/lib/api/anchor";
+import { logger } from "@/lib/logger";
 
 
 const AnchorsPageContent = () => {
@@ -37,6 +41,33 @@ const AnchorsPageContent = () => {
     paginatedAnchors, sortedAndFilteredAnchors
   } = useAnchorPage()
 
+  const [insights, setInsights] = useState<string[]>([]);
+  const [insightsLoading, setInsightsLoading] = useState(true);
+  const [insightsError, setInsightsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchInsights() {
+      setInsightsLoading(true);
+      setInsightsError(null);
+      try {
+        const result = await getAnchorInsights();
+        if (!cancelled) setInsights(result.insights ?? []);
+      } catch (err) {
+        logger.error("Error fetching anchor insights:", err);
+        if (!cancelled) {
+          setInsightsError("Unable to load anchor insights right now.");
+        }
+      } finally {
+        if (!cancelled) setInsightsLoading(false);
+      }
+    }
+    fetchInsights();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
 
   return (
     <MainLayout>
@@ -57,6 +88,24 @@ const AnchorsPageContent = () => {
         {error && (
           <Error error={error} />
         )}
+
+        <section
+          aria-labelledby="anchor-insights-heading"
+          className="mb-6 bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 p-4"
+        >
+          <h2
+            id="anchor-insights-heading"
+            className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3"
+          >
+            Insights
+          </h2>
+          <InsightsList
+            insights={insights}
+            isLoading={insightsLoading}
+            error={insightsError}
+            emptyMessage="No anchor insights available yet."
+          />
+        </section>
 
         <SearchAndControls
           searchTerm={searchTerm} setSearchTerm={setSearchTerm} sortBy={sortBy} setSortBy={setSortBy} setSortOrder={setSortOrder} sortOrder={sortOrder} setIsExportOpen={setIsExportOpen}

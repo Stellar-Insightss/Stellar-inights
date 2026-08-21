@@ -19,6 +19,20 @@ export async function getAnchorDetail(
   return api.get<AnchorDetailData>(`/anchors/${trimmed}`);
 }
 
+export interface AnchorInsightsResponse {
+  insights: string[];
+  generated_at?: string;
+}
+
+/**
+ * Auto-generated anchor insights (backend#13), e.g. "Anchor X's reliability
+ * dropped 3% this week", "2 anchors now support a new asset". Returns an
+ * empty list rather than throwing so the callout can degrade gracefully.
+ */
+export async function getAnchorInsights(): Promise<AnchorInsightsResponse> {
+  return api.get<AnchorInsightsResponse>("/anchors/insights");
+}
+
 /**
  * Mock data generator for Anchor Details
  */
