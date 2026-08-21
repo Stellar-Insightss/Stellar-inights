@@ -6,8 +6,10 @@ import { Activity, Share2, Info } from "lucide-react";
 import {
   fetchNetworkPaymentVolume,
   fetchNetworkNewAccounts,
+  fetchNetworkFeeTrends,
   type NetworkPaymentVolumePoint,
   type NetworkNewAccountsPoint,
+  type NetworkFeeTrendPoint,
 } from "@/lib/network-api";
 import { logger } from "@/lib/logger";
 
@@ -53,6 +55,23 @@ const NewAccountsChart = dynamic(
   },
 );
 
+const FeeTrendsChart = dynamic(
+  () =>
+    import("@/components/charts/FeeTrendsChart").then((m) => ({
+      default: m.FeeTrendsChart,
+    })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="glass-card rounded-2xl p-6 border border-border/50 h-[420px] animate-pulse">
+        <div className="h-4 w-40 bg-white/5 rounded mb-4" />
+        <div className="h-8 w-64 bg-white/5 rounded mb-8" />
+        <div className="h-[260px] w-full bg-white/5 rounded-xl" />
+      </div>
+    ),
+  },
+);
+
 export default function NetworkPage() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -65,6 +84,10 @@ export default function NetworkPage() {
     NetworkNewAccountsPoint[]
   >([]);
   const [newAccountsLoading, setNewAccountsLoading] = useState(true);
+  const [feeTrendPoints, setFeeTrendPoints] = useState<NetworkFeeTrendPoint[]>(
+    [],
+  );
+  const [feeTrendsLoading, setFeeTrendsLoading] = useState(true);
 
   useEffect(() => {
     async function fetchGraphData() {
@@ -112,6 +135,22 @@ export default function NetworkPage() {
       }
     }
     void loadNewAccounts();
+  }, []);
+
+  useEffect(() => {
+    async function loadFeeTrends() {
+      setFeeTrendsLoading(true);
+      try {
+        const result = await fetchNetworkFeeTrends(30);
+        setFeeTrendPoints(result.points);
+      } catch (err) {
+        logger.error("Failed to load fee trends panel:", err);
+        setFeeTrendPoints([]);
+      } finally {
+        setFeeTrendsLoading(false);
+      }
+    }
+    void loadFeeTrends();
   }, []);
 
   return (
@@ -162,6 +201,7 @@ export default function NetworkPage() {
           data={newAccountsPoints}
           loading={newAccountsLoading}
         />
+        <FeeTrendsChart data={feeTrendPoints} loading={feeTrendsLoading} />
         <PaymentVolumeChart data={volumePoints} loading={volumeLoading} />
       </div>
 
