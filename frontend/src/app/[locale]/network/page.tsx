@@ -5,10 +5,12 @@ import dynamic from "next/dynamic";
 import { Activity, Share2, Info } from "lucide-react";
 import {
   fetchNetworkPaymentVolume,
+  fetchNetworkDailyActiveAccounts,
   fetchNetworkTransactionsPerDay,
   fetchNetworkNewAccounts,
   fetchNetworkFeeTrends,
   type NetworkPaymentVolumePoint,
+  type NetworkDailyActiveAccountsPoint,
   type NetworkTransactionsPerDayPoint,
   type NetworkNewAccountsPoint,
   type NetworkFeeTrendPoint,
@@ -27,6 +29,23 @@ const PaymentVolumeChart = dynamic(
   () =>
     import("@/components/charts/PaymentVolumeChart").then((m) => ({
       default: m.PaymentVolumeChart,
+    })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="glass-card rounded-2xl p-6 border border-border/50 h-[420px] animate-pulse">
+        <div className="h-4 w-40 bg-white/5 rounded mb-4" />
+        <div className="h-8 w-64 bg-white/5 rounded mb-8" />
+        <div className="h-[260px] w-full bg-white/5 rounded-xl" />
+      </div>
+    ),
+  },
+);
+
+const DailyActiveAccountsChart = dynamic(
+  () =>
+    import("@/components/charts/DailyActiveAccountsChart").then((m) => ({
+      default: m.DailyActiveAccountsChart,
     })),
   {
     ssr: false,
@@ -99,6 +118,10 @@ export default function NetworkPage() {
     [],
   );
   const [volumeLoading, setVolumeLoading] = useState(true);
+  const [daaPoints, setDaaPoints] = useState<NetworkDailyActiveAccountsPoint[]>(
+    [],
+  );
+  const [daaLoading, setDaaLoading] = useState(true);
   const [txPerDayPoints, setTxPerDayPoints] = useState<
     NetworkTransactionsPerDayPoint[]
   >([]);
@@ -142,6 +165,22 @@ export default function NetworkPage() {
       }
     }
     void loadPaymentVolume();
+  }, []);
+
+  useEffect(() => {
+    async function loadDailyActiveAccounts() {
+      setDaaLoading(true);
+      try {
+        const result = await fetchNetworkDailyActiveAccounts(30);
+        setDaaPoints(result.points);
+      } catch (err) {
+        logger.error("Failed to load daily active accounts panel:", err);
+        setDaaPoints([]);
+      } finally {
+        setDaaLoading(false);
+      }
+    }
+    void loadDailyActiveAccounts();
   }, []);
 
   useEffect(() => {
@@ -236,6 +275,7 @@ export default function NetworkPage() {
 
       {/* Network metrics panels */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <DailyActiveAccountsChart data={daaPoints} loading={daaLoading} />
         <TransactionsPerDayChart
           data={txPerDayPoints}
           loading={txPerDayLoading}
