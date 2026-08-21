@@ -5,9 +5,11 @@ import dynamic from "next/dynamic";
 import { Activity, Share2, Info } from "lucide-react";
 import {
   fetchNetworkPaymentVolume,
+  fetchNetworkTransactionsPerDay,
   fetchNetworkNewAccounts,
   fetchNetworkFeeTrends,
   type NetworkPaymentVolumePoint,
+  type NetworkTransactionsPerDayPoint,
   type NetworkNewAccountsPoint,
   type NetworkFeeTrendPoint,
 } from "@/lib/network-api";
@@ -25,6 +27,23 @@ const PaymentVolumeChart = dynamic(
   () =>
     import("@/components/charts/PaymentVolumeChart").then((m) => ({
       default: m.PaymentVolumeChart,
+    })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="glass-card rounded-2xl p-6 border border-border/50 h-[420px] animate-pulse">
+        <div className="h-4 w-40 bg-white/5 rounded mb-4" />
+        <div className="h-8 w-64 bg-white/5 rounded mb-8" />
+        <div className="h-[260px] w-full bg-white/5 rounded-xl" />
+      </div>
+    ),
+  },
+);
+
+const TransactionsPerDayChart = dynamic(
+  () =>
+    import("@/components/charts/TransactionsPerDayChart").then((m) => ({
+      default: m.TransactionsPerDayChart,
     })),
   {
     ssr: false,
@@ -80,6 +99,10 @@ export default function NetworkPage() {
     [],
   );
   const [volumeLoading, setVolumeLoading] = useState(true);
+  const [txPerDayPoints, setTxPerDayPoints] = useState<
+    NetworkTransactionsPerDayPoint[]
+  >([]);
+  const [txPerDayLoading, setTxPerDayLoading] = useState(true);
   const [newAccountsPoints, setNewAccountsPoints] = useState<
     NetworkNewAccountsPoint[]
   >([]);
@@ -119,6 +142,22 @@ export default function NetworkPage() {
       }
     }
     void loadPaymentVolume();
+  }, []);
+
+  useEffect(() => {
+    async function loadTransactionsPerDay() {
+      setTxPerDayLoading(true);
+      try {
+        const result = await fetchNetworkTransactionsPerDay(30);
+        setTxPerDayPoints(result.points);
+      } catch (err) {
+        logger.error("Failed to load transactions-per-day panel:", err);
+        setTxPerDayPoints([]);
+      } finally {
+        setTxPerDayLoading(false);
+      }
+    }
+    void loadTransactionsPerDay();
   }, []);
 
   useEffect(() => {
@@ -197,6 +236,10 @@ export default function NetworkPage() {
 
       {/* Network metrics panels */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <TransactionsPerDayChart
+          data={txPerDayPoints}
+          loading={txPerDayLoading}
+        />
         <NewAccountsChart
           data={newAccountsPoints}
           loading={newAccountsLoading}
