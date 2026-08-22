@@ -1,51 +1,31 @@
-name: Contract Fuzzing
+name: Contract Test Ownership
 
 on:
   push:
     branches: [main, develop]
     paths:
-      - 'contracts/**'
+      - '.github/workflows/contract-fuzzing.yml'
+      - 'docs/contract-invariants.md'
   pull_request:
     paths:
-      - 'contracts/**'
+      - '.github/workflows/contract-fuzzing.yml'
+      - 'docs/contract-invariants.md'
+
+permissions:
+  contents: read
 
 jobs:
-  fuzz:
-    name: Property-based & Fuzz Tests
+  verify-contracts-are-external:
+    name: Verify contract test ownership
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
-
-      - name: Cache cargo registry & build artefacts
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            contracts/target
-          key: ${{ runner.os }}-contracts-fuzz-${{ hashFiles('contracts/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-contracts-fuzz-
-
-      - name: Run analytics fuzz tests (1000+ iterations via bolero)
-        working-directory: contracts
-        env:
-          BOLERO_ITERATIONS: 1000
-        run: cargo test --package analytics --test '*' fuzz_ -- --nocapture
-
-      - name: Run analytics property-based tests
-        working-directory: contracts
-        run: cargo test --package analytics fuzz_ -- --nocapture
-
-      - name: Run governance fuzz tests (property-based)
-        working-directory: contracts
-        run: cargo test --package governance fuzz_ -- --nocapture
-
-      - name: Run all contract tests (fail CI on any failure)
-        working-directory: contracts
-        run: cargo test --workspace -- --nocapture
+      - name: Reject stale vendored contracts
+        run: |
+          test ! -d contracts
+          test -f docs/contract-invariants.md
+          grep -q 'Stellar-Insightss/contracts' docs/contract-invariants.md
+      - name: Explain the contract quality gate
+        run: |
+          echo 'Property tests, fuzzing, and contract coverage run in Stellar-Insightss/contracts.'
+          echo 'See docs/contract-invariants.md for the per-contract safety invariants.'
