@@ -2,7 +2,7 @@
 mod tests {
     use tokio::time::{sleep, Duration};
     use tokio_tungstenite::tungstenite::protocol::Message;
-    use crate::realtime::{ConnectionRegistry, fanout::fanout_message};
+    use stellar_insights_backend::realtime::{ConnectionRegistry, fanout::fanout_message};
 
     #[tokio::test]
     async fn test_slow_consumer_does_not_affect_others() {
