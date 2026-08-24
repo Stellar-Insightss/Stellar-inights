@@ -1,4 +1,5 @@
 //! Stellar Insights Backend
+//! Stellar Insights Backend
 //!
 //! Core backend services for the Stellar Insights platform, including:
 //! - Real-time data processing and fan-out
@@ -8,3 +9,4 @@
 pub mod distributed_lock;
 pub mod event_indexer;
 pub mod realtime;
+pub mod observability;

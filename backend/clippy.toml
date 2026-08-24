@@ -1,0 +1,4 @@
+disallowed-methods = [
+    { path = "tokio::spawn", reason = "Use `crate::observability::trace_context::spawn_with_trace` to preserve distributed tracing context." },
+    { path = "tokio::task::spawn_blocking", reason = "Use `crate::observability::trace_context::spawn_blocking_with_trace` to preserve distributed tracing context." }
+]
