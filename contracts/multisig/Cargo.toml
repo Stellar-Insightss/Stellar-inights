@@ -1,5 +1,5 @@
 [package]
-name = "stellar-insights"
+name = "multisig"
 version = "0.1.0"
 edition = "2021"
 publish = false
@@ -15,5 +15,4 @@ testutils = ["soroban-sdk/testutils"]
 soroban-sdk = { workspace = true }
 
 [dev-dependencies]
-ed25519-dalek = "2.2"
 soroban-sdk = { workspace = true, features = ["testutils"] }

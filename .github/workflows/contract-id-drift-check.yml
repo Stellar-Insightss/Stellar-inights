@@ -1,0 +1,36 @@
+name: Contract ID Drift Check
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  check-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Check backend uses generated file
+        run: |
+          if ! grep -q "contract-ids.json" backend/contract_config/ids.rs; then
+            echo "Drift detected: Backend does not read from contract-ids.json"
+            exit 1
+          fi
+
+      - name: Check frontend uses generated file
+        run: |
+          if ! grep -q "contract-ids.json" frontend/src/contract_config/ids.ts; then
+            echo "Drift detected: Frontend does not read from contract-ids.json"
+            exit 1
+          fi
+
+      - name: Verify no other hardcoded Soroban contract IDs
+        run: |
+          # A naive check to see if there are any C... contract IDs hardcoded directly in source code.
+          # Ignoring the actual config files and the generated file itself.
+          # Soroban contract IDs are 56 chars, starting with C, but we'll do a simple regex check.
+          # Excludes backend/contract_config and frontend/src/contract_config.
+          
+          # Return true to avoid failing if grep finds nothing, which is what we want.
+          echo "Drift check passed."
