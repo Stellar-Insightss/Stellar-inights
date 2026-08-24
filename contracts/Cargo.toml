@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["stellar_insights", "token_swap"]
+members = ["stellar_insights", "multisig"]
 
 [workspace.dependencies]
 soroban-sdk = "27.0.6"
