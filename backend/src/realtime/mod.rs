@@ -10,6 +10,7 @@ use tokio_tungstenite::tungstenite::protocol::Message;
 pub type ConnectionId = String;
 pub type ConnectionSender = tokio::sync::mpsc::UnboundedSender<Message>;
 
+#[derive(Clone)]
 pub struct ConnectionRegistry {
     pub connections: Arc<Mutex<HashMap<ConnectionId, ConnectionSender>>>,
 }

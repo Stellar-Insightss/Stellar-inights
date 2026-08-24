@@ -1,8 +1,10 @@
 #![no_std]
 
 pub mod binding;
+pub mod event;
 mod submit;
 
+use event::{SnapshotSubmitted, SNAPSHOT_SUBMITTED_SCHEMA_VERSION};
 use soroban_sdk::{contract, contracterror, contractimpl, contracttype, Address, BytesN, Env, Map};
 
 #[contracterror]
@@ -109,20 +111,29 @@ impl StellarInsights {
         }
 
         let submitted_at = env.ledger().timestamp();
-        snapshots.set(
+        let snapshot = Snapshot {
             epoch,
-            Snapshot {
-                epoch,
-                snapshot_hash,
-                source_data_hash,
-                submitted_at,
-                submitter: caller,
-            },
-        );
+            snapshot_hash,
+            source_data_hash,
+            submitted_at,
+            submitter: caller,
+        };
+        snapshots.set(epoch, snapshot.clone());
         env.storage()
             .persistent()
             .set(&DataKey::Snapshots, &snapshots);
         env.storage().instance().set(&DataKey::LatestEpoch, &epoch);
+
+        SnapshotSubmitted {
+            schema_version: SNAPSHOT_SUBMITTED_SCHEMA_VERSION,
+            epoch: snapshot.epoch,
+            snapshot_hash: snapshot.snapshot_hash,
+            source_data_hash: snapshot.source_data_hash,
+            submitted_at: snapshot.submitted_at,
+            submitter: snapshot.submitter,
+        }
+        .publish(&env);
+
         Ok(submitted_at)
     }
 
