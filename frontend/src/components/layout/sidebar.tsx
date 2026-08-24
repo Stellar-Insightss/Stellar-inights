@@ -9,7 +9,7 @@ import {
   Compass,
   Settings,
   Activity,
-  ChevronLeft,
+  ChevronLeft,                                                                                                                                                                                                                                                                                                                                                                                
   ChevronRight,
   LayoutDashboard,
   Waves,
