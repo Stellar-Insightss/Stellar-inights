@@ -3,13 +3,18 @@
 //! BEFORE that contract upgrade is deployed. Contract and indexer deployments
 //! run on independent schedules, and nothing else enforces this ordering.
 
-use serde::Deserialize;
-use serde_json::Value;
+use stellar_xdr::ContractEvent;
 use thiserror::Error;
 
-use super::parsers;
+use super::{parsers, xdr};
 
 pub const SNAPSHOT_SUBMITTED_TOPIC: &str = "snapshot_submitted";
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct NormalizedContractEvent {
+    pub contract_id: String,
+    pub event: NormalizedEvent,
+}
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum NormalizedEvent {
@@ -27,21 +32,37 @@ pub struct NormalizedSnapshotSubmitted {
 
 #[derive(Debug, Error)]
 pub enum DispatchError {
-    #[error("event payload is missing schema_version")]
-    MissingSchemaVersion,
-    #[error("event payload has a non-u32 schema_version")]
-    InvalidSchemaVersion,
-    #[error("unsupported event schema_version {0}")]
-    UnsupportedSchemaVersion(u32),
+    #[error("only contract events can be indexed, got {0}")]
+    UnsupportedEventType(String),
+    #[error("contract event is missing its contract ID")]
+    MissingContractId,
+    #[error("contract event must have exactly one fixed topic, got {0}")]
+    InvalidTopicCount(usize),
+    #[error("contract event topic must be an XDR symbol")]
+    InvalidTopicType,
+    #[error("contract event topic is not valid UTF-8")]
+    InvalidTopicEncoding,
     #[error("unsupported event topic {0}")]
     UnsupportedTopic(String),
-    #[error("invalid {topic} payload for schema_version {schema_version}: {source}")]
-    InvalidPayload {
-        topic: &'static str,
-        schema_version: u32,
-        #[source]
-        source: serde_json::Error,
+    #[error("contract event data must be a non-empty XDR map")]
+    InvalidEventData,
+    #[error("event payload key must be an XDR symbol")]
+    InvalidFieldNameType,
+    #[error("event payload field name is not valid UTF-8")]
+    InvalidFieldNameEncoding,
+    #[error("event payload contains duplicate field {0}")]
+    DuplicateField(String),
+    #[error("event payload contains unexpected field {field} for schema_version {schema_version}")]
+    UnexpectedField { field: String, schema_version: u32 },
+    #[error("event payload is missing field {0}")]
+    MissingField(&'static str),
+    #[error("event payload field {field} must be {expected}")]
+    InvalidFieldType {
+        field: &'static str,
+        expected: &'static str,
     },
+    #[error("unsupported event schema_version {0}")]
+    UnsupportedSchemaVersion(u32),
     #[error("parser version mismatch: expected {expected}, got {actual}")]
     ParserVersionMismatch { expected: u32, actual: u32 },
 }
@@ -68,66 +89,22 @@ impl TryFrom<u32> for SchemaVersion {
     }
 }
 
-/// Dispatch a decoded Soroban event data map by topic and schema version.
-pub fn dispatch(topic: &str, payload: Value) -> Result<NormalizedEvent, DispatchError> {
-    if topic != SNAPSHOT_SUBMITTED_TOPIC {
-        return Err(DispatchError::UnsupportedTopic(topic.to_owned()));
+/// Decode and dispatch a protocol-native Soroban contract event.
+pub fn dispatch(event: &ContractEvent) -> Result<NormalizedContractEvent, DispatchError> {
+    let envelope = xdr::decode_event(event)?;
+
+    if envelope.topic != SNAPSHOT_SUBMITTED_TOPIC {
+        return Err(DispatchError::UnsupportedTopic(envelope.topic));
     }
 
-    let schema_version = payload
-        .get("schema_version")
-        .ok_or(DispatchError::MissingSchemaVersion)?
-        .as_u64()
-        .and_then(|value| u32::try_from(value).ok())
-        .ok_or(DispatchError::InvalidSchemaVersion)?;
+    let schema_version = xdr::u32_field(envelope.data, "schema_version")?;
+    let event = match SchemaVersion::try_from(schema_version)? {
+        SchemaVersion::V1 => parsers::v1::parse_snapshot_submitted(envelope.data),
+        SchemaVersion::V2 => parsers::v2::parse_snapshot_submitted(envelope.data),
+    }?;
 
-    match SchemaVersion::try_from(schema_version)? {
-        SchemaVersion::V1 => parsers::v1::parse_snapshot_submitted(payload),
-        SchemaVersion::V2 => parse_snapshot_submitted_v2(payload),
-    }
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct SnapshotSubmittedV2 {
-    schema_version: u32,
-    epoch: u64,
-    snapshot_hash: String,
-    source_data_hash: String,
-    submitted_at: u64,
-    submitter: String,
-    snapshot_size_bytes: u64,
-}
-
-/// Synthetic v2 parser registered solely to exercise version routing. A real
-/// v2 rollout must move its finalized schema into `parsers/v2.rs` before the
-/// matching contract upgrade is deployed.
-fn parse_snapshot_submitted_v2(payload: Value) -> Result<NormalizedEvent, DispatchError> {
-    let event: SnapshotSubmittedV2 =
-        serde_json::from_value(payload).map_err(|source| DispatchError::InvalidPayload {
-            topic: SNAPSHOT_SUBMITTED_TOPIC,
-            schema_version: 2,
-            source,
-        })?;
-
-    if event.schema_version != 2 {
-        return Err(DispatchError::ParserVersionMismatch {
-            expected: 2,
-            actual: event.schema_version,
-        });
-    }
-
-    // A future parser may use this field. Reading it here ensures the fixture
-    // is genuinely v2-shaped while retaining the v1 logical normalization.
-    let _snapshot_size_bytes = event.snapshot_size_bytes;
-
-    Ok(NormalizedEvent::SnapshotSubmitted(
-        NormalizedSnapshotSubmitted {
-            epoch: event.epoch,
-            snapshot_hash: event.snapshot_hash,
-            source_data_hash: event.source_data_hash,
-            submitted_at: event.submitted_at,
-            submitter: event.submitter,
-        },
-    ))
+    Ok(NormalizedContractEvent {
+        contract_id: envelope.contract_id,
+        event,
+    })
 }
