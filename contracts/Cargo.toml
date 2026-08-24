@@ -1,9 +1,9 @@
 [workspace]
 resolver = "2"
-members = ["stellar_insights"]
+members = ["stellar_insights", "multisig"]
 
 [workspace.dependencies]
-soroban-sdk = "26.0.1"
+soroban-sdk = "27.0.6"
 
 [profile.release]
 opt-level = "z"
