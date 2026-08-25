@@ -8,4 +8,5 @@
 pub mod contract_ops;
 pub mod distributed_lock;
 pub mod event_indexer;
+pub mod observability;
 pub mod realtime;
