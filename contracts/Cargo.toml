@@ -6,6 +6,7 @@ members = [
     "upgrade",
     "upgrade/test_contracts/stellar_insights_legacy",
     "upgrade/test_contracts/stellar_insights_v2",
+    "time-locked-transactions",
 ]
 
 [workspace.dependencies]
