@@ -1,16 +1,11 @@
 #![no_std]
 
-pub mod binding;
-pub mod event;
-mod submit;
-
-use event::{SnapshotSubmitted, SNAPSHOT_SUBMITTED_SCHEMA_VERSION};
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, panic_with_error, Address, BytesN, Env,
-    Map,
+    contract, contracterror, contractimpl, contracttype, panic_with_error, Address, Bytes, BytesN,
+    Env, Map,
 };
 
-pub const CURRENT_STORAGE_SCHEMA_VERSION: u32 = 1;
+const STORAGE_SCHEMA_VERSION: u32 = 2;
 
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -33,7 +28,7 @@ pub enum Error {
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum DataKey {
+enum DataKey {
     Admin,
     SigningPublicKey,
     Snapshots,
@@ -53,10 +48,10 @@ pub struct Snapshot {
 }
 
 #[contract]
-pub struct StellarInsights;
+pub struct StellarInsightsV2;
 
 #[contractimpl]
-impl StellarInsights {
+impl StellarInsightsV2 {
     pub fn initialize(
         env: Env,
         admin: Address,
@@ -70,10 +65,9 @@ impl StellarInsights {
             .instance()
             .set(&DataKey::SigningPublicKey, &signing_public_key);
         env.storage().instance().set(&DataKey::LatestEpoch, &0u64);
-        env.storage().instance().set(
-            &DataKey::StorageSchemaVersion,
-            &CURRENT_STORAGE_SCHEMA_VERSION,
-        );
+        env.storage()
+            .instance()
+            .set(&DataKey::StorageSchemaVersion, &STORAGE_SCHEMA_VERSION);
         Ok(())
     }
 
@@ -81,11 +75,7 @@ impl StellarInsights {
         if env.storage().instance().has(&DataKey::UpgradeManager) {
             return Err(Error::UpgradeManagerAlreadySet);
         }
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .ok_or(Error::AdminNotSet)?;
+        let admin = admin(&env)?;
         admin.require_auth();
         env.storage()
             .instance()
@@ -102,23 +92,21 @@ impl StellarInsights {
         caller: Address,
     ) -> Result<u64, Error> {
         caller.require_auth();
-        ensure_schema(&env, CURRENT_STORAGE_SCHEMA_VERSION)?;
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .ok_or(Error::AdminNotSet)?;
-        if caller != admin {
+        ensure_schema(&env)?;
+        if caller != admin(&env)? {
             return Err(Error::Unauthorized);
         }
         if epoch == 0 {
             return Err(Error::InvalidEpoch);
         }
-
-        // This check happens before storage mutation, so a forged submission
-        // cannot reserve an epoch even if the caller is the authorized admin.
-        submit::verify_signature(&env, epoch, &snapshot_hash, &source_data_hash, &signature)?;
-
+        let public_key: BytesN<32> = env
+            .storage()
+            .instance()
+            .get(&DataKey::SigningPublicKey)
+            .ok_or(Error::SigningKeyNotSet)?;
+        let payload = signed_payload(&env, epoch, &snapshot_hash, &source_data_hash);
+        env.crypto()
+            .ed25519_verify(&public_key, &payload, &signature);
         let mut snapshots: Map<u64, Snapshot> = env
             .storage()
             .persistent()
@@ -127,7 +115,7 @@ impl StellarInsights {
         if snapshots.contains_key(epoch) {
             return Err(Error::DuplicateEpoch);
         }
-        let latest: u64 = env
+        let latest = env
             .storage()
             .instance()
             .get(&DataKey::LatestEpoch)
@@ -135,36 +123,26 @@ impl StellarInsights {
         if epoch <= latest {
             return Err(Error::EpochMonotonicityViolated);
         }
-
         let submitted_at = env.ledger().timestamp();
-        let snapshot = Snapshot {
+        snapshots.set(
             epoch,
-            snapshot_hash,
-            source_data_hash,
-            submitted_at,
-            submitter: caller,
-        };
-        snapshots.set(epoch, snapshot.clone());
+            Snapshot {
+                epoch,
+                snapshot_hash,
+                source_data_hash,
+                submitted_at,
+                submitter: caller,
+            },
+        );
         env.storage()
             .persistent()
             .set(&DataKey::Snapshots, &snapshots);
         env.storage().instance().set(&DataKey::LatestEpoch, &epoch);
-
-        SnapshotSubmitted {
-            schema_version: SNAPSHOT_SUBMITTED_SCHEMA_VERSION,
-            epoch: snapshot.epoch,
-            snapshot_hash: snapshot.snapshot_hash,
-            source_data_hash: snapshot.source_data_hash,
-            submitted_at: snapshot.submitted_at,
-            submitter: snapshot.submitter,
-        }
-        .publish(&env);
-
         Ok(submitted_at)
     }
 
     pub fn get_snapshot(env: Env, epoch: u64) -> Result<Snapshot, Error> {
-        ensure_schema(&env, CURRENT_STORAGE_SCHEMA_VERSION)?;
+        ensure_schema(&env)?;
         let snapshots: Map<u64, Snapshot> = env
             .storage()
             .persistent()
@@ -174,20 +152,18 @@ impl StellarInsights {
     }
 
     pub fn latest_epoch(env: Env) -> u64 {
-        require_schema(&env, CURRENT_STORAGE_SCHEMA_VERSION);
+        require_schema(&env);
         env.storage()
             .instance()
             .get(&DataKey::LatestEpoch)
             .unwrap_or(0)
     }
 
-    /// The manager calls this stable entrypoint before the executable changes.
-    /// The update itself takes effect only after the outer invocation succeeds.
     pub fn governance_upgrade(
         env: Env,
         new_wasm_hash: BytesN<32>,
-        expected_schema_version: u32,
-        target_schema_version: u32,
+        expected_source_schema: u32,
+        target_schema: u32,
     ) -> Result<(), Error> {
         let manager: Address = env
             .storage()
@@ -195,26 +171,21 @@ impl StellarInsights {
             .get(&DataKey::UpgradeManager)
             .ok_or(Error::UpgradeManagerNotSet)?;
         manager.require_auth();
-        validate_upgrade_transition(expected_schema_version, target_schema_version)?;
-
-        let current_schema: Option<u32> =
-            env.storage().instance().get(&DataKey::StorageSchemaVersion);
-        match (current_schema, expected_schema_version) {
-            (Some(current), expected) if current == expected => {}
-            (None, 0) if has_legacy_state(&env) => {}
+        validate_transition(expected_source_schema, target_schema)?;
+        let stored: Option<u32> = env.storage().instance().get(&DataKey::StorageSchemaVersion);
+        match (stored, expected_source_schema) {
+            (Some(actual), expected) if actual == expected => {}
+            (None, 0) if has_state(&env) => {}
             _ => return Err(Error::SchemaMismatch),
         }
-
         env.deployer().update_current_contract_wasm(new_wasm_hash);
         Ok(())
     }
 
-    /// Migration is separate from the WASM update because the new executable
-    /// is not active until the upgrade invocation commits successfully.
     pub fn migrate_schema(
         env: Env,
         expected_source_schema: u32,
-        target_schema_version: u32,
+        target_schema: u32,
     ) -> Result<(), Error> {
         let manager: Address = env
             .storage()
@@ -222,66 +193,68 @@ impl StellarInsights {
             .get(&DataKey::UpgradeManager)
             .ok_or(Error::UpgradeManagerNotSet)?;
         manager.require_auth();
-        validate_migration_transition(expected_source_schema, target_schema_version)?;
-
-        let current_schema: Option<u32> =
-            env.storage().instance().get(&DataKey::StorageSchemaVersion);
-        match (current_schema, expected_source_schema) {
-            (Some(current), expected) if current == expected => {}
-            (None, 0) if has_legacy_state(&env) => {}
+        validate_transition(expected_source_schema, target_schema)?;
+        let stored: Option<u32> = env.storage().instance().get(&DataKey::StorageSchemaVersion);
+        match (stored, expected_source_schema) {
+            (Some(actual), expected) if actual == expected => {}
+            (None, 0) if has_state(&env) => {}
             _ => return Err(Error::SchemaMismatch),
         }
-
-        // These values are required by every supported schema. Refusing to
-        // write the marker when they are absent prevents a partial legacy
-        // layout from being declared migrated.
-        if !has_legacy_state(&env) {
+        if !has_state(&env) {
             return Err(Error::NotInitialized);
         }
-        env.storage().instance().set(
-            &DataKey::StorageSchemaVersion,
-            &CURRENT_STORAGE_SCHEMA_VERSION,
-        );
+        env.storage()
+            .instance()
+            .set(&DataKey::StorageSchemaVersion, &STORAGE_SCHEMA_VERSION);
         Ok(())
     }
 }
 
-fn ensure_schema(env: &Env, expected: u32) -> Result<(), Error> {
+fn ensure_schema(env: &Env) -> Result<(), Error> {
     let actual: Option<u32> = env.storage().instance().get(&DataKey::StorageSchemaVersion);
     match actual {
-        Some(actual) if actual == expected => Ok(()),
+        Some(actual) if actual == STORAGE_SCHEMA_VERSION => Ok(()),
         _ => Err(Error::SchemaMismatch),
     }
 }
 
-fn require_schema(env: &Env, expected: u32) {
-    if ensure_schema(env, expected).is_err() {
+fn require_schema(env: &Env) {
+    if ensure_schema(env).is_err() {
         panic_with_error!(env, Error::SchemaMismatch);
     }
 }
 
-fn has_legacy_state(env: &Env) -> bool {
+fn admin(env: &Env) -> Result<Address, Error> {
+    env.storage()
+        .instance()
+        .get(&DataKey::Admin)
+        .ok_or(Error::AdminNotSet)
+}
+
+fn has_state(env: &Env) -> bool {
     env.storage().instance().has(&DataKey::Admin)
         && env.storage().instance().has(&DataKey::SigningPublicKey)
         && env.storage().instance().has(&DataKey::LatestEpoch)
 }
 
-fn validate_upgrade_transition(source: u32, target: u32) -> Result<(), Error> {
-    // The current executable can verify source schemas 0 and 1. The candidate
-    // executable remains responsible for validating its own target schema.
-    if target == 0 || source > CURRENT_STORAGE_SCHEMA_VERSION {
-        return Err(Error::InvalidSchemaTransition);
-    }
-    Ok(())
-}
-
-fn validate_migration_transition(source: u32, target: u32) -> Result<(), Error> {
-    // This executable implements schema 1. It can validate the markerless
-    // legacy layout (0 -> 1) and the already-current no-op (1 -> 1), but it
-    // cannot truthfully write any other final schema marker.
+fn validate_transition(source: u32, target: u32) -> Result<(), Error> {
+    // V2 explicitly models only these source layouts and writes only schema 2.
     match (source, target) {
-        (0, CURRENT_STORAGE_SCHEMA_VERSION)
-        | (CURRENT_STORAGE_SCHEMA_VERSION, CURRENT_STORAGE_SCHEMA_VERSION) => Ok(()),
+        (0, STORAGE_SCHEMA_VERSION)
+        | (1, STORAGE_SCHEMA_VERSION)
+        | (STORAGE_SCHEMA_VERSION, STORAGE_SCHEMA_VERSION) => Ok(()),
         _ => Err(Error::InvalidSchemaTransition),
     }
+}
+
+fn signed_payload(
+    env: &Env,
+    epoch: u64,
+    snapshot_hash: &BytesN<32>,
+    source_data_hash: &BytesN<32>,
+) -> Bytes {
+    let mut payload = Bytes::from_slice(env, &epoch.to_be_bytes());
+    payload.append(&Bytes::from_array(env, &snapshot_hash.to_array()));
+    payload.append(&Bytes::from_array(env, &source_data_hash.to_array()));
+    payload
 }

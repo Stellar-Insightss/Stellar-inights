@@ -1,6 +1,12 @@
 [workspace]
 resolver = "2"
-members = ["stellar_insights", "multisig"]
+members = [
+    "stellar_insights",
+    "multisig",
+    "upgrade",
+    "upgrade/test_contracts/stellar_insights_legacy",
+    "upgrade/test_contracts/stellar_insights_v2",
+]
 
 [workspace.dependencies]
 soroban-sdk = "27.0.6"
