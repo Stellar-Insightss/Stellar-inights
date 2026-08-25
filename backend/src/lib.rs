@@ -5,6 +5,7 @@
 //! - Distributed locking for safe concurrent job execution
 //! - WebSocket connection management
 
+pub mod contract_ops;
 pub mod distributed_lock;
 pub mod event_indexer;
 pub mod realtime;
