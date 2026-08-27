@@ -2,9 +2,11 @@
 
 mod proposal;
 pub mod schema_version;
+pub mod scope;
 
 pub use proposal::{GovernanceConfig, ProposalStatus, UpgradeProposal};
 use schema_version::validate_transition;
+use scope::TargetScope;
 use soroban_sdk::{
     contract, contractclient, contracterror, contractimpl, contracttype, panic_with_error, Address,
     BytesN, Env, Vec,
@@ -26,6 +28,7 @@ pub enum Error {
     InvalidStatus = 11,
     ThresholdNotReached = 12,
     InvalidSchemaTransition = 13,
+    TargetOutOfScope = 14,
 }
 
 #[contracttype]
@@ -106,6 +109,7 @@ impl UpgradeManager {
     ) -> Result<u32, Error> {
         let config = config(&env)?;
         config.governance.require_auth();
+        TargetScope::validate_target_scope(&env, &target, &config)?;
         if is_zero_hash(&new_wasm_hash) {
             return Err(Error::InvalidProposal);
         }
