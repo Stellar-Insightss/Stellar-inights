@@ -20,6 +20,7 @@ pub fn verify_signature(
 
     // Soroban's host verifies Ed25519 signatures and aborts the invocation on
     // failure. A successful return is therefore the acceptance condition.
-    env.crypto().ed25519_verify(&public_key, signature, &payload);
+    env.crypto()
+        .ed25519_verify(&public_key, &payload, signature);
     Ok(())
 }

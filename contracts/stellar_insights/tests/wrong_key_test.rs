@@ -1,5 +1,6 @@
 #![cfg(feature = "testutils")]
 
+use ed25519_dalek::{Signer, SigningKey};
 use soroban_sdk::{testutils::Address as _, Address, BytesN, Env};
 use stellar_insights::{binding::signed_payload, StellarInsights, StellarInsightsClient};
 
@@ -9,16 +10,20 @@ fn wrong_pipeline_key_is_rejected() {
     let env = Env::default();
     env.mock_all_auths();
     let admin = Address::generate(&env);
-    let signing_key = BytesN::from_array(&env, &[7; 32]);
-    let wrong_key = BytesN::from_array(&env, &[8; 32]);
-    let contract_id = env.register_contract(None, StellarInsights);
+    let signing_key = SigningKey::from_bytes(&[7; 32]);
+    let wrong_key = SigningKey::from_bytes(&[8; 32]);
+    let signing_public_key = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+    let contract_id = env.register(StellarInsights, ());
     let client = StellarInsightsClient::new(&env, &contract_id);
-    client.initialize(&admin, &signing_key);
+    client.initialize(&admin, &signing_public_key);
     let snapshot_hash = BytesN::from_array(&env, &[1; 32]);
     let source_hash = BytesN::from_array(&env, &[2; 32]);
-    let signature = env.crypto().ed25519_sign(
-        &wrong_key,
-        &signed_payload(&env, 1, &snapshot_hash, &source_hash),
+    let payload = signed_payload(&env, 1, &snapshot_hash, &source_hash);
+    let signature = BytesN::from_array(
+        &env,
+        &wrong_key
+            .sign(payload.to_buffer::<72>().as_slice())
+            .to_bytes(),
     );
 
     let _ = client.submit_snapshot(&1, &snapshot_hash, &source_hash, &signature, &admin);

@@ -1,9 +1,16 @@
 [workspace]
 resolver = "2"
-members = ["stellar_insights"]
+members = [
+    "stellar_insights",
+    "multisig",
+    "upgrade",
+    "upgrade/test_contracts/stellar_insights_legacy",
+    "upgrade/test_contracts/stellar_insights_v2",
+    "time-locked-transactions",
+]
 
 [workspace.dependencies]
-soroban-sdk = "26.0.1"
+soroban-sdk = "27.0.6"
 
 [profile.release]
 opt-level = "z"

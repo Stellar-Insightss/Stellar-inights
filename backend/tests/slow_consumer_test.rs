@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
+    use stellar_insights_backend::realtime::{fanout::fanout_message, ConnectionRegistry};
     use tokio::time::{sleep, Duration};
     use tokio_tungstenite::tungstenite::protocol::Message;
-    use stellar_insights_backend::realtime::{ConnectionRegistry, fanout::fanout_message};
 
     #[tokio::test]
     async fn test_slow_consumer_does_not_affect_others() {
