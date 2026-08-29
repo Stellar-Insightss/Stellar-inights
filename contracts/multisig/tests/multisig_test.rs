@@ -1,9 +1,7 @@
 #![cfg(test)]
 
 use soroban_sdk::{
-    contract, contractimpl,
-    testutils::Address as _,
-    vec, Address, Bytes, Env, Symbol,
+    contract, contractimpl, testutils::Address as _, vec, Address, Bytes, Env, Symbol,
 };
 
 use multisig::{MultisigContract, MultisigContractClient};
@@ -24,7 +22,15 @@ impl NoopContract {
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn setup(env: &Env) -> (MultisigContractClient<'_>, Address, Address, Address, Address) {
+fn setup(
+    env: &Env,
+) -> (
+    MultisigContractClient<'_>,
+    Address,
+    Address,
+    Address,
+    Address,
+) {
     let contract_id = env.register(MultisigContract, ());
     let client = MultisigContractClient::new(env, &contract_id);
 
@@ -60,7 +66,12 @@ fn basic_proposal_reaches_threshold() {
     let (client, _admin, owner_a, owner_b, _owner_c) = setup(&env);
 
     let target = register_noop(&env);
-    let id = client.propose(&owner_a, &target, &Symbol::new(&env, "noop"), &empty_args(&env));
+    let id = client.propose(
+        &owner_a,
+        &target,
+        &Symbol::new(&env, "noop"),
+        &empty_args(&env),
+    );
 
     assert_eq!(client.approve(&owner_b, &id), 2);
     client.execute(&id);
@@ -76,7 +87,12 @@ fn reconfigure_does_not_affect_open_proposal() {
     let (client, admin, owner_a, owner_b, _owner_c) = setup(&env);
 
     let target = register_noop(&env);
-    let id = client.propose(&owner_a, &target, &Symbol::new(&env, "noop"), &empty_args(&env));
+    let id = client.propose(
+        &owner_a,
+        &target,
+        &Symbol::new(&env, "noop"),
+        &empty_args(&env),
+    );
 
     // Reconfigure: remove owner_b, add a brand-new owner, keep threshold 2.
     let new_owner = Address::generate(&env);
@@ -125,7 +141,12 @@ fn execute_before_threshold_fails() {
     env.mock_all_auths();
     let (client, _admin, owner_a, _owner_b, _owner_c) = setup(&env);
     let target = register_noop(&env);
-    let id = client.propose(&owner_a, &target, &Symbol::new(&env, "noop"), &empty_args(&env));
+    let id = client.propose(
+        &owner_a,
+        &target,
+        &Symbol::new(&env, "noop"),
+        &empty_args(&env),
+    );
     // Only 1 approval (threshold = 2).
     let result = client.try_execute(&id);
     assert!(result.is_err());
@@ -138,7 +159,12 @@ fn duplicate_approval_rejected() {
     env.mock_all_auths();
     let (client, _admin, owner_a, _owner_b, _owner_c) = setup(&env);
     let target = register_noop(&env);
-    let id = client.propose(&owner_a, &target, &Symbol::new(&env, "noop"), &empty_args(&env));
+    let id = client.propose(
+        &owner_a,
+        &target,
+        &Symbol::new(&env, "noop"),
+        &empty_args(&env),
+    );
     let result = client.try_approve(&owner_a, &id);
     assert!(result.is_err());
 }
@@ -152,7 +178,12 @@ fn threshold_snapshot_isolation() {
 
     let target = register_noop(&env);
     // Propose with threshold=2 snapshotted.
-    let id = client.propose(&owner_a, &target, &Symbol::new(&env, "noop"), &empty_args(&env));
+    let id = client.propose(
+        &owner_a,
+        &target,
+        &Symbol::new(&env, "noop"),
+        &empty_args(&env),
+    );
 
     // Raise threshold to 3 via reconfigure.
     let owners = vec![&env, owner_a.clone(), owner_b.clone(), owner_c.clone()];

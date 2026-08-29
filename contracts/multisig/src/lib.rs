@@ -2,9 +2,7 @@
 
 mod storage;
 
-use soroban_sdk::{
-    contract, contracterror, contractimpl, Address, Bytes, Env, Symbol, Vec,
-};
+use soroban_sdk::{contract, contracterror, contractimpl, Address, Bytes, Env, Symbol, Vec};
 use storage::{
     bump_instance, increment_id, load_config, load_proposal, save_config, save_proposal, Config,
     PolicySnapshot, Proposal,
@@ -49,11 +47,7 @@ impl MultisigContract {
         owners: Vec<Address>,
         threshold: u32,
     ) -> Result<(), Error> {
-        if env
-            .storage()
-            .instance()
-            .has(&storage::DataKey::Config)
-        {
+        if env.storage().instance().has(&storage::DataKey::Config) {
             return Err(Error::AlreadyInitialized);
         }
         if threshold == 0 || threshold as usize > owners.len() as usize {
@@ -186,13 +180,8 @@ impl MultisigContract {
 
         // Invoke the target contract.  The args are already encoded – pass as
         // a raw Vec<Val> by deserialising from Bytes via the environment.
-        let args_vec: soroban_sdk::Vec<soroban_sdk::Val> =
-            soroban_sdk::Vec::from_array(&env, []);
-        env.invoke_contract::<soroban_sdk::Val>(
-            &proposal.target,
-            &proposal.function,
-            args_vec,
-        );
+        let args_vec: soroban_sdk::Vec<soroban_sdk::Val> = soroban_sdk::Vec::from_array(&env, []);
+        env.invoke_contract::<soroban_sdk::Val>(&proposal.target, &proposal.function, args_vec);
 
         Ok(())
     }
