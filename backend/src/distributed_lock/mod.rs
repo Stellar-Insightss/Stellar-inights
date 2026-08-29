@@ -10,13 +10,18 @@
 //! https://martin.kleppmann.com/papers/fencing-tokens.pdf
 
 pub mod fencing;
+pub mod redis_store;
 pub mod store;
+
+#[cfg(test)]
+pub mod lock_sigstop_test;
 
 use std::sync::Arc;
 use thiserror::Error;
 
-pub use self::fencing::FencingToken;
-pub use self::store::{LockStore, DistributedLockConfig};
+pub use self::fencing::{FencingToken, FencingTokenGenerator, ResourceFencingState};
+pub use self::redis_store::{RedisLockConfig, RedisLockStore};
+pub use self::store::{DistributedLockConfig, InMemoryLockStore, LockMetadata, LockStore};
 
 /// Errors that can occur during lock operations
 #[derive(Error, Debug)]
@@ -203,6 +208,14 @@ mod tests {
     #[tokio::test]
     async fn test_lock_creation() {
         let config = DistributedLockConfig::default();
-        // Will be expanded with real store implementations
+        let store = Arc::new(InMemoryLockStore::new());
+        let lock = DistributedLock::new(
+            "test_res".to_string(),
+            "test_holder".to_string(),
+            store,
+            config,
+        );
+        assert_eq!(lock.token(), None);
+        assert_eq!(lock.resource_id, "test_res");
     }
 }
