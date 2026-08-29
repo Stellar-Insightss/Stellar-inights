@@ -69,11 +69,37 @@ impl MissingSubmissionHandler {
         };
 
         for period in periods {
-            let Some(aggregate) = self.offchain.get_aggregate(period).await? else {
-                continue;
+            let aggregate = match self.offchain.get_aggregate(period).await {
+                Ok(Some(agg)) => agg,
+                Ok(None) => continue,
+                Err(err) => {
+                    warn!(
+                        "failed fetching offchain aggregate for period {}: {}",
+                        period, err
+                    );
+                    report.attempts.push(ResubmissionAttempt {
+                        period,
+                        status: ResubmissionStatus::Failed(err.to_string()),
+                    });
+                    continue;
+                }
             };
 
-            let onchain_snapshot = self.onchain_reader.get_snapshot(period).await?;
+            let onchain_snapshot = match self.onchain_reader.get_snapshot(period).await {
+                Ok(snap) => snap,
+                Err(err) => {
+                    warn!(
+                        "failed fetching onchain snapshot for period {}: {}",
+                        period, err
+                    );
+                    report.attempts.push(ResubmissionAttempt {
+                        period,
+                        status: ResubmissionStatus::Failed(err.to_string()),
+                    });
+                    continue;
+                }
+            };
+
             if onchain_snapshot.is_some() {
                 continue;
             }
@@ -95,7 +121,8 @@ impl MissingSubmissionHandler {
                         "failed resubmitting missing on-chain snapshot for period {}: {}",
                         period, err
                     );
-                    self.alerts
+                    let _ = self
+                        .alerts
                         .emit(AlertEvent {
                             kind: AlertKind::MissingSubmissionResubmitFailed,
                             severity: AlertSeverity::Critical,
@@ -105,7 +132,7 @@ impl MissingSubmissionHandler {
                                 err
                             ),
                         })
-                        .await?;
+                        .await;
 
                     report.attempts.push(ResubmissionAttempt {
                         period,
