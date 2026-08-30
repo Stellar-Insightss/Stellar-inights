@@ -24,7 +24,9 @@ opentelemetry = "0.32.0"
 opentelemetry_sdk = "0.32.1"
 tracing-opentelemetry = "0.33.0"
 opentelemetry-stdout = "0.32.0"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
 [dev-dependencies]
 soroban-sdk = { version = "=27.0.6", features = ["testutils"] }
 stellar-insights = { path = "../contracts/stellar_insights", features = ["testutils"] }
+wiremock = "0.6"
