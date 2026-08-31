@@ -85,6 +85,12 @@ pub trait V2Target {
         expected_source_schema: u32,
         target_schema: u32,
     ) -> Result<(), TargetError>;
+    fn governance_upgrade(
+        env: Env,
+        new_wasm_hash: BytesN<32>,
+        expected_source_schema: u32,
+        target_schema: u32,
+    ) -> Result<(), TargetError>;
 }
 
 #[contractclient(name = "LegacyClient")]
