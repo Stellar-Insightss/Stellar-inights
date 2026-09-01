@@ -1357,6 +1357,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "nu-ansi-term"
+version = "0.50.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
+dependencies = [
+ "windows-sys",
+]
+
+[[package]]
 name = "num-bigint"
 version = "0.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2063,7 +2072,7 @@ dependencies = [
  "soroban-env-macros",
  "soroban-wasmi",
  "static_assertions",
- "stellar-xdr 27.0.0",
+ "stellar-xdr",
  "wasmparser",
 ]
 
@@ -2125,7 +2134,7 @@ dependencies = [
  "quote",
  "serde",
  "serde_json",
- "stellar-xdr 27.0.0",
+ "stellar-xdr",
  "syn 2.0.119",
 ]
 
@@ -2183,7 +2192,7 @@ dependencies = [
  "soroban-env-common",
  "soroban-spec",
  "soroban-spec-rust",
- "stellar-xdr 27.0.0",
+ "stellar-xdr",
  "syn 2.0.119",
 ]
 
@@ -2195,7 +2204,7 @@ checksum = "473404322827b285cbcd87517f365986bd63af7842c78b2a86ee061715fda61e"
 dependencies = [
  "base64",
  "sha2",
- "stellar-xdr 27.0.0",
+ "stellar-xdr",
  "thiserror 1.0.69",
  "wasmparser",
 ]
@@ -2211,7 +2220,7 @@ dependencies = [
  "quote",
  "sha2",
  "soroban-spec",
- "stellar-xdr 27.0.0",
+ "stellar-xdr",
  "syn 2.0.119",
  "thiserror 1.0.69",
 ]
@@ -2281,15 +2290,17 @@ dependencies = [
  "prometheus",
  "serde",
  "serde_json",
+ "sha2",
  "soroban-sdk",
  "stellar-insights",
- "stellar-xdr 28.0.0",
+ "stellar-xdr",
  "thiserror 2.0.20",
  "tokio",
  "tokio-tungstenite",
  "tracing",
  "tracing-futures",
  "tracing-opentelemetry",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -2328,20 +2339,6 @@ dependencies = [
  "hex",
  "serde",
  "serde_with",
- "sha2",
- "stellar-strkey 0.0.13",
-]
-
-[[package]]
-name = "stellar-xdr"
-version = "28.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f93d09ff8b9f919b084f664003c4c546ac66a76affd5429460dbe29f4b326f8e"
-dependencies = [
- "crate-git-revision 0.0.9",
- "escape-bytes",
- "ethnum",
- "hex",
  "sha2",
  "stellar-strkey 0.0.13",
 ]
@@ -2589,9 +2586,12 @@ version = "0.3.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb7f578e5945fb242538965c2d0b04418d38ec25c79d160cd279bf0731c8d319"
 dependencies = [
+ "nu-ansi-term",
  "sharded-slab",
+ "smallvec",
  "thread_local",
  "tracing-core",
+ "tracing-log",
 ]
 
 [[package]]
