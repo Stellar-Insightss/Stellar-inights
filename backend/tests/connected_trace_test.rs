@@ -1,12 +1,12 @@
 use opentelemetry::trace::{TraceContextExt, TracerProvider as _};
-use opentelemetry_sdk::trace::TracerProvider;
+use opentelemetry_sdk::trace::SdkTracerProvider;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::Registry;
 use stellar_insights_backend::observability::trace_context::{spawn_with_trace, TracedMessage};
 
 fn setup_tracer() {
-    let provider = TracerProvider::builder().build();
+    let provider = SdkTracerProvider::builder().build();
     let tracer = provider.tracer("test");
     let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
     let subscriber = Registry::default().with(telemetry);
