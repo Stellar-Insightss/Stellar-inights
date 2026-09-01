@@ -17,14 +17,18 @@ lazy_static = "1.4"
 async-trait = "0.1"
 chrono = "0.4"
 hex = "0.4"
-stellar-xdr = "=28.0.0"
+stellar-xdr = { version = "=27.0.0", default-features = false, features = ["alloc", "std"] }
 tracing = "0.1.44"
 tracing-futures = "0.2.5"
 opentelemetry = "0.32.0"
 opentelemetry_sdk = "0.32.1"
 tracing-opentelemetry = "0.33.0"
 opentelemetry-stdout = "0.32.0"
+redis = { version = "0.27", features = ["tokio-comp", "aio"] }
+libc = "0.2"
 
 [dev-dependencies]
 soroban-sdk = { version = "=27.0.6", features = ["testutils"] }
 stellar-insights = { path = "../contracts/stellar_insights", features = ["testutils"] }
+tracing-subscriber = { version = "0.3", features = ["registry"] }
+tempfile = "3"

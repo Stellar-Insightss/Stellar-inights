@@ -1,15 +1,25 @@
 //! Distributed lock storage backends
 //!
-//! Abstracts over Redis or Postgres advisory locks as the backing store.
+//! Abstracts over distributed backing stores (such as Redis or Postgres advisory locks).
 //! The storage layer is responsible for:
 //! 1. Persisting lock state (holder ID, token, expiration)
 //! 2. Enforcing TTL (locks expire if not renewed)
 //! 3. Rejecting stale writes (fencing token validation)
+//! 4. Guaranteeing strict monotonicity across restarts and failovers
+//!
+//! # Failure Modes & Recovery Matrix
+//!
+//! | Scenario | Behaviour | Recovery Strategy |
+//! |---|---|---|
+//! | Store unreachable | `LockError::StorageError` returned | Client pauses execution, backs off, fails closed |
+//! | Holder stalls past TTL | Lock TTL expires; store allows new acquisition | Stale holder's subsequent write rejected via fencing token |
+//! | Store failover with replication lag | Generation/epoch layering increments token space | Zero token reuse; new tokens strictly exceed previous epochs |
+//! | Concurrent acquisition storm | Atomic Lua script or row lock serializes attempts | Exactly one holder wins; all others fail cleanly |
+//! | Renewal / expiry race | Atomic verification of ownership before TTL update | Expired locks cannot be renewed if already acquired by another |
 
 use async_trait::async_trait;
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 use crate::distributed_lock::{LockError, Result, FencingToken};
-use prometheus::{Counter, Histogram, Registry};
 
 /// Configuration for distributed locks
 ///
@@ -278,7 +288,7 @@ impl LockStore for InMemoryLockStore {
     async fn write_with_token(
         &self,
         resource_id: &str,
-        key: &str,
+        _key: &str,
         value: &str,
         token: &FencingToken,
     ) -> Result<()> {

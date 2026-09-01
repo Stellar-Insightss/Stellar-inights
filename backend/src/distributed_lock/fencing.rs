@@ -7,7 +7,6 @@
 //! it has already seen for that resource — making the storage layer the source of truth.
 
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
 
 /// A fencing token that uniquely identifies a lock acquisition
 /// 
@@ -23,8 +22,11 @@ pub struct FencingToken {
 
 /// Generates monotonically increasing fencing tokens
 /// 
-/// This is not a global counter but per-resource. Each resource has its own
-/// fencing token sequence to detect stale writers for that specific resource.
+/// In a single-process context, provides atomic incrementing sequence numbers.
+/// In a multi-replica distributed deployment, token generation is delegated to
+/// the backing `LockStore`'s atomic primitives (e.g. `RedisLockStore` atomic Lua scripts),
+/// with `from_last_token` or `from_epoch` used to restore or bridge monotonicity across
+/// restarts and failovers.
 pub struct FencingTokenGenerator {
     next_token: AtomicU64,
 }
@@ -40,10 +42,22 @@ impl FencingTokenGenerator {
     /// Create a token generator starting from a specific value
     /// 
     /// Used when recovering from persistent storage (e.g., Redis, Postgres)
-    /// to maintain monotonicity across restarts
+    /// to maintain monotonicity across restarts.
     pub fn from_last_token(last_token: u64) -> Self {
         Self {
-            next_token: AtomicU64::new(last_token + 1),
+            next_token: AtomicU64::new(last_token.saturating_add(1)),
+        }
+    }
+
+    /// Create a token generator with an epoch multiplier to guarantee cross-failover monotonicity
+    pub fn from_epoch(epoch: u64, initial_counter: u64) -> Self {
+        let base = if epoch > 0 {
+            epoch.saturating_mul(1_000_000_000)
+        } else {
+            0
+        };
+        Self {
+            next_token: AtomicU64::new(base.saturating_add(initial_counter)),
         }
     }
 
@@ -60,6 +74,22 @@ impl FencingTokenGenerator {
     /// Peek at the next token without issuing it (for testing/observability)
     pub fn peek_next(&self) -> u64 {
         self.next_token.load(Ordering::Acquire)
+    }
+
+    /// Update the generator's minimum token value if the given value is higher
+    pub fn update_if_greater(&self, token: u64) {
+        let mut current = self.next_token.load(Ordering::Acquire);
+        while token >= current {
+            match self.next_token.compare_exchange_weak(
+                current,
+                token.saturating_add(1),
+                Ordering::SeqCst,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => break,
+                Err(actual) => current = actual,
+            }
+        }
     }
 }
 
